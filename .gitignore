@@ -1,0 +1,11 @@
+.env
+.env.local
+.env.production
+.env*.local
+node_modules
+.next
+.netlify
+*.pem
+*.key
+*service-account*.json
+.DS_Store
