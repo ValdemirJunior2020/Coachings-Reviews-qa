@@ -1,0 +1,27 @@
+import { getSession } from '@/lib/auth';
+import { redirect } from 'next/navigation';
+import LoginForm from '@/components/LoginForm';
+
+export default async function Home() {
+  const s = await getSession();
+  if (s) {
+    redirect(s.role === 'admin' ? '/admin' : `/center/${s.center?.toLowerCase()}`);
+  }
+
+  return (
+    <main className="min-h-screen flex items-center justify-center p-6">
+      <div className="glass w-full max-w-md rounded-3xl p-8">
+        <img
+          src="/images/qa-control-background.svg"
+          alt="QA Control"
+          className="mx-auto h-28 w-28 rounded-2xl object-cover mb-5"
+        />
+        <h1 className="text-3xl font-bold text-center">QA Coaching Review Center</h1>
+        <p className="text-center text-slate-500 mt-2 mb-7">
+          Quality Assurance Coaching Follow-Up
+        </p>
+        <LoginForm />
+      </div>
+    </main>
+  );
+}
