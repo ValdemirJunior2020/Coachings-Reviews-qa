@@ -5,6 +5,7 @@ import {filterReviews,type ReviewFilters} from '@/lib/filter';
 import type {Center,Review,ReviewStatus} from '@/lib/types';
 
 const CENTERS:Center[]=['Buwelo','WNS','Concentrix','Telus'];
+type PresenceUser={id:string;email:string;name:string;role:'admin'|'center';center:Center|'';page:string;status:'online'|'idle'|'offline';lastSeen:string};
 const emptyFilters=(center?:Center):ReviewFilters=>({search:'',center:center||'All',agent:'All',status:'All',itinerary:'',callId:'',qaDate:'',callDate:'',coachedDate:'',range:'All',from:'',to:''});
 
 function Stat({label,value}:{label:string;value:string|number}){return <div className="glass rounded-2xl p-4"><div className="text-sm text-slate-500">{label}</div><div className="mt-1 text-2xl font-bold">{value}</div></div>}
@@ -23,6 +24,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
   const [viewMode,setViewMode]=useState<'cards'|'sheet'>('cards');
   const [disputedOnly,setDisputedOnly]=useState(false);
   const [disputeModal,setDisputeModal]=useState<Review|null>(null);
+  const [presence,setPresence]=useState<PresenceUser[]>([]);
 
   async function load(){
     setLoading(true);setError('');
@@ -31,6 +33,47 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     finally{setLoading(false)}
   }
   useEffect(()=>{load()},[]);
+
+  useEffect(()=>{
+    let lastInteraction=Date.now();
+    const markActive=()=>{lastInteraction=Date.now()};
+    const events=['pointerdown','keydown','scroll','touchstart'] as const;
+    events.forEach(event=>window.addEventListener(event,markActive,{passive:true}));
+
+    const heartbeat=async()=>{
+      if(document.visibilityState!=='visible')return;
+      const activity=Date.now()-lastInteraction>120000?'idle':'active';
+      try{
+        await fetch('/api/presence',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({page:location.pathname,activity}),keepalive:true});
+      }catch{}
+    };
+
+    heartbeat();
+    const timer=window.setInterval(heartbeat,30000);
+    const onVisibility=()=>{if(document.visibilityState==='visible'){markActive();heartbeat()}};
+    document.addEventListener('visibilitychange',onVisibility);
+
+    return ()=>{
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange',onVisibility);
+      events.forEach(event=>window.removeEventListener(event,markActive));
+    };
+  },[]);
+
+  useEffect(()=>{
+    if(!admin)return;
+    let cancelled=false;
+    const refreshPresence=async()=>{
+      try{
+        const res=await fetch('/api/presence',{cache:'no-store'});
+        const d=await res.json();
+        if(!cancelled&&res.ok)setPresence(d.users||[]);
+      }catch{}
+    };
+    refreshPresence();
+    const timer=window.setInterval(refreshPresence,30000);
+    return()=>{cancelled=true;window.clearInterval(timer)};
+  },[admin]);
 
   const agents=useMemo(()=>['All',...Array.from(new Set(reviews.filter(r=>filters.center==='All'||r.center===filters.center).map(r=>r.agent))).sort()],[reviews,filters.center]);
   const baseFiltered=useMemo(()=>filterReviews(reviews,filters),[reviews,filters]);
@@ -99,7 +142,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     const selected=admin&&filters.center!=='All'?String(filters.center):'';
     location.href='/api/export'+(selected?`?center=${encodeURIComponent(selected)}`:'');
   }
-  async function logout(){await fetch('/api/logout',{method:'POST'});location.href='/'}
+  async function logout(){try{await fetch('/api/presence',{method:'DELETE',keepalive:true})}catch{}await fetch('/api/logout',{method:'POST'});location.href='/'}
 
   const nav=<nav className="mt-8 grid gap-2 text-sm">
     <button onClick={()=>{setViewMode('cards');chooseStatus('All')}} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">Dashboard / All Reviews</button>
@@ -127,6 +170,22 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
         {!loading&&!error&&<div className={`mt-5 rounded-2xl p-4 font-semibold ${overdue?'bg-red-50 text-red-800':pending?'bg-amber-50 text-amber-800':'bg-green-50 text-green-800'}`}>{overdue?`🔴 Overdue Coaching — ${overdue} review${overdue===1?'':'s'} pending for more than 2 business days.`:pending?`⚠ Coaching Reminder — ${pending} QA review${pending===1?' is':'s are'} still waiting for coaching confirmation.`:'✅ All Coaching Completed — There are no pending coaching reviews in this view.'}</div>}
 
         <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-6"><Stat label="Reviews" value={total}/><Stat label="Pending" value={pending}/><Stat label="Completed" value={completed}/><Stat label="Overdue" value={overdue}/><Stat label="🟠 TL Disputed" value={disputed}/><Stat label="Completion" value={`${pct}%`}/></div>
+
+        {admin&&<div className="glass mt-5 rounded-2xl p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div><h2 className="font-bold">🟢 Online Now</h2><p className="text-sm text-slate-500">Live activity in the QA app · refreshes every 30 seconds</p></div>
+            <div className="text-sm font-bold text-green-700">{presence.filter(u=>u.status==='online').length} online · {presence.filter(u=>u.status==='idle').length} idle</div>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {presence.filter(u=>u.status!=='offline').length===0?<div className="text-sm text-slate-500">No other active sessions right now.</div>:presence.filter(u=>u.status!=='offline').map(u=><div key={u.id} className="rounded-xl border bg-white/70 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div><div className="font-bold">{u.name}</div><div className="text-xs text-slate-500">{u.role==='admin'?'Admin':u.center||'Call Center'} · {u.email}</div></div>
+                <span className={`rounded-full px-2 py-1 text-xs font-bold ${u.status==='online'?'bg-green-100 text-green-800':'bg-amber-100 text-amber-800'}`}>{u.status==='online'?'● Online':'◐ Idle'}</span>
+              </div>
+              <div className="mt-2 text-xs text-slate-500">Page: {u.page||'—'} · Last seen {u.lastSeen?new Date(u.lastSeen).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'}):'—'}</div>
+            </div>)}
+          </div>
+        </div>}
 
         {admin&&<div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{CENTERS.map(c=>{const rows=reviews.filter(r=>r.center===c),done=rows.filter(r=>r.coached).length,late=rows.filter(r=>r.status==='Overdue').length,centerPct=rows.length?Math.round(done/rows.length*100):0;return <button key={c} onClick={()=>patch('center',c)} className="glass focusable rounded-2xl p-4 text-left"><div className="font-bold">{c}</div><div className="mt-2 text-sm text-slate-600">{rows.length} Reviews · {rows.length-done} Pending · {late} Overdue</div><div className="mt-2 text-xl font-bold">{centerPct}% Complete</div></button>})}</div>}
 
