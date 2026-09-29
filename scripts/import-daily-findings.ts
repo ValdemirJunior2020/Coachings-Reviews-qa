@@ -28,7 +28,11 @@ let imported=0, skipped=0;
 for(const center of centers){
   const ws=wb.Sheets[center];
   if(!ws) continue;
-  const rows=XLSX.utils.sheet_to_json<Record<string,unknown>>(ws,{defval:''});
+  const raw=XLSX.utils.sheet_to_json<unknown[]>(ws,{header:1,defval:''});
+  const headerIndex=raw.findIndex(row=>row.some(v=>s(v).toLowerCase()==='call id'));
+  if(headerIndex<0){console.warn(center+': Call ID header not found');continue;}
+  const headers=raw[headerIndex].map(s);
+  const rows=raw.slice(headerIndex+1).map(row=>Object.fromEntries(headers.map((h,i)=>[h,row[i]??''])) as Record<string,unknown>);
   const normalized=rows.filter(r=>s(r['Call ID']));
   for(let i=0;i<normalized.length;i+=400){
     const batch=db.batch();
