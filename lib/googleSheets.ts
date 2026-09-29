@@ -292,3 +292,84 @@ async function appendAudit(a: {
     },
   });
 }
+
+
+const DAILY_FINDINGS_SPREADSHEET_ID = '1YD6wgQqaV-luNexAv_fiTg-AhXcH_DoJKt5HubJsbWg';
+
+function coachingSheetsClient() {
+  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || process.env.FIREBASE_CLIENT_EMAIL;
+  const key = (process.env.GOOGLE_PRIVATE_KEY || process.env.FIREBASE_PRIVATE_KEY)?.replace(/\\n/g, '\n');
+  if (!email || !key) throw new Error('Google Sheets credentials are not configured');
+  const auth = new google.auth.JWT({
+    email,
+    key,
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
+  return google.sheets({ version: 'v4', auth });
+}
+
+/**
+ * Finds a review by Call ID on the center tab and colors the entire source row.
+ * Light green = coached. White = reopened.
+ */
+export async function setCoachedRowHighlight(center: Center, callId: string, coached: boolean) {
+  const api = coachingSheetsClient();
+  const id = process.env.GOOGLE_SHEETS_SPREADSHEET_ID || DAILY_FINDINGS_SPREADSHEET_ID;
+
+  const meta = await api.spreadsheets.get({
+    spreadsheetId: id,
+    fields: 'sheets.properties(sheetId,title,gridProperties.columnCount)',
+  });
+  const sheet = (meta.data.sheets ?? []).find(x => x.properties?.title === center);
+  const sheetId = sheet?.properties?.sheetId;
+  const columnCount = sheet?.properties?.gridProperties?.columnCount ?? 18;
+  if (sheetId === undefined || sheetId === null) throw new Error(`Google Sheet tab not found: ${center}`);
+
+  const head = await api.spreadsheets.values.get({
+    spreadsheetId: id,
+    range: `'${center}'!1:10`,
+  });
+  const top = head.data.values ?? [];
+  const headerOffset = top.findIndex(r => r.some(c => norm(c).toLowerCase() === 'call id'));
+  if (headerOffset < 0) throw new Error(`Could not find Call ID header in ${center}`);
+  const callIdCol = top[headerOffset].findIndex(c => norm(c).toLowerCase() === 'call id');
+  const headerRow = headerOffset + 1;
+  const letter = colLetter(callIdCol);
+
+  const values = await api.spreadsheets.values.get({
+    spreadsheetId: id,
+    range: `'${center}'!${letter}${headerRow + 1}:${letter}10000`,
+    valueRenderOption: 'FORMATTED_VALUE',
+  });
+  const rows = values.data.values ?? [];
+  const matches:number[] = [];
+  rows.forEach((r, i) => {
+    if (norm(r[0]) === callId) matches.push(headerRow + 1 + i);
+  });
+  if (matches.length === 0) throw new Error(`Call ID ${callId} was not found in Google Sheet tab ${center}`);
+  if (matches.length > 1) throw new Error(`Duplicate Call ID ${callId} found in Google Sheet tab ${center}`);
+
+  const rowNumber = matches[0];
+  const backgroundColor = coached
+    ? { red: 0.88, green: 0.96, blue: 0.88 }
+    : { red: 1, green: 1, blue: 1 };
+
+  await api.spreadsheets.batchUpdate({
+    spreadsheetId: id,
+    requestBody: {
+      requests: [{
+        repeatCell: {
+          range: {
+            sheetId,
+            startRowIndex: rowNumber - 1,
+            endRowIndex: rowNumber,
+            startColumnIndex: 0,
+            endColumnIndex: columnCount,
+          },
+          cell: { userEnteredFormat: { backgroundColor } },
+          fields: 'userEnteredFormat.backgroundColor',
+        },
+      }],
+    },
+  });
+}
