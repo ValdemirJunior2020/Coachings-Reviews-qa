@@ -31,6 +31,10 @@ function toReview(data: Record<string, unknown>): Review {
     status: coached ? 'Completed' : isOverdue(qaDate, false) ? 'Overdue' : 'Pending',
     ageBusinessDays: businessDaysOld(qaDate),
     positive: /good job|positive/i.test(String(data.quickCoaching ?? '')+' '+String(data.businessImpact ?? '')),
+    tlDisputed: Boolean(data.tlDisputed),
+    disputeBy: String(data.disputeBy ?? ''),
+    disputeDate: String(data.disputeDate ?? ''),
+    disputeReason: String(data.disputeReason ?? ''),
   };
 }
 
@@ -64,6 +68,36 @@ export async function updateCoaching(args:{
     center:args.center, callId:args.callId,
     action:args.coached ? (Boolean(old.coached)?'COACHING_EDITED':'COACHING_COMPLETED') : 'COACHING_REOPENED',
     oldValue:{coached:Boolean(old.coached),dateCoached:old.dateCoached||'',coachedBy:old.coachedBy||'',notes:old.coachingNotes||''},
+    newValue:next,
+  });
+  const updated=await ref.get();
+  return toReview(updated.data() as Record<string,unknown>);
+}
+
+
+export async function disputeReview(args:{
+  center:Center; callId:string; disputeBy:string; reason:string; actor:string;
+}) {
+  const ref=db().collection('reviews').doc(args.callId);
+  const snap=await ref.get();
+  if(!snap.exists) throw new Error('Review no longer exists');
+  const old=snap.data() as Record<string,unknown>;
+  if(old.center!==args.center) throw new Error('Wrong center for this review');
+  if(Boolean(old.tlDisputed)) throw new Error('This review is already disputed.');
+
+  const next={
+    tlDisputed:true,
+    disputeBy:args.disputeBy.trim(),
+    disputeDate:new Date().toISOString().slice(0,10),
+    disputeReason:args.reason.trim(),
+    disputeSubmittedAt:FieldValue.serverTimestamp(),
+    updatedAt:FieldValue.serverTimestamp(),
+  };
+  await ref.update(next);
+  await db().collection('coachingAudit').add({
+    timestamp:FieldValue.serverTimestamp(),user:args.actor,role:'center',
+    center:args.center,callId:args.callId,action:'TL_DISPUTED',
+    oldValue:{tlDisputed:Boolean(old.tlDisputed)},
     newValue:next,
   });
   const updated=await ref.get();
