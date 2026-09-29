@@ -35,7 +35,8 @@ export async function POST(req:Request){
     const email=String(b.email||'').trim();
     const emailLower=email.toLowerCase();
     const role=b.role==='admin'?'admin':'center';
-    const center=role==='center'?b.center as Center:undefined;
+    const centerRaw=String(b.center||'');
+    const center=centers.includes(centerRaw as Center)?centerRaw as Center:undefined;
     const password=String(b.password||'');
     if(!name||!email||!email.includes('@')) return NextResponse.json({error:'Name and a valid email are required.'},{status:400});
     if(password.length<8) return NextResponse.json({error:'Password must be at least 8 characters.'},{status:400});
@@ -70,7 +71,8 @@ export async function PATCH(req:Request){
     const email=String(b.email??old.email??'').trim();
     const emailLower=email.toLowerCase();
     const role=b.role==='admin'?'admin':'center';
-    const center=role==='center'?b.center as Center:undefined;
+    const centerRaw=String(b.center||'');
+    const center=centers.includes(centerRaw as Center)?centerRaw as Center:undefined;
     if(!name||!email||!email.includes('@')) return NextResponse.json({error:'Name and a valid email are required.'},{status:400});
     if(role==='center'&&!centers.includes(center)) return NextResponse.json({error:'Select a valid call center.'},{status:400});
     const duplicate=await db().collection('loginUsers').where('emailLower','==',emailLower).get();
