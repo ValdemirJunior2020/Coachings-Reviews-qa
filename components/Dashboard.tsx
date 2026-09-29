@@ -55,6 +55,19 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     if(res.ok){setReviews(x=>x.map(v=>v.callId===d.review.callId&&v.center===d.review.center?d.review:v));setFlash('Coaching reopened.')}
     else setFlash(d.error||'Reopen failed.');
   }
+  async function uploadDaily(file:File){
+    setFlash('Uploading Daily Findings...');
+    const body=new FormData();body.append('file',file);
+    const res=await fetch('/api/import',{method:'POST',body});
+    const d=await res.json();
+    if(!res.ok){setFlash(d.error||'Upload failed.');return}
+    setFlash(`✓ Upload complete — ${d.added} new · ${d.updated} updated · ${d.skipped} skipped.`);
+    await load();
+  }
+  function downloadReviews(){
+    const selected=admin&&filters.center!=='All'?String(filters.center):'';
+    location.href='/api/export'+(selected?`?center=${encodeURIComponent(selected)}`:'');
+  }
   async function logout(){await fetch('/api/logout',{method:'POST'});location.href='/'}
 
   const nav=<nav className="mt-8 grid gap-2 text-sm">
@@ -74,7 +87,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     </aside>
     <main className="w-full p-4 pt-20 md:ml-64 md:p-8">
       <div className="mx-auto max-w-7xl">
-        <div className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-3xl font-bold">QA Coaching Daily Feedbacks</h1><p className="text-slate-500">Quality Assurance Coaching Follow-Up · {userName}</p></div><button onClick={load} className="focusable rounded-xl border bg-white px-4 py-2">Refresh</button></div>
+        <div className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-3xl font-bold">QA Coaching Daily Feedbacks</h1><p className="text-slate-500">Quality Assurance Coaching Follow-Up · {userName}</p></div><div className="flex flex-wrap gap-2">{admin&&<label className="focusable cursor-pointer rounded-xl bg-sky-700 px-4 py-2 font-bold text-white">📤 Upload Daily Findings<input type="file" accept=".xlsx,.xls" className="hidden" onChange={e=>{const file=e.target.files?.[0];if(file)uploadDaily(file);e.currentTarget.value=''}}/></label>}<button onClick={downloadReviews} className="focusable rounded-xl border bg-white px-4 py-2">⬇ Download {admin?(filters.center==='All'?'All Centers':filters.center):center}</button><button onClick={load} className="focusable rounded-xl border bg-white px-4 py-2">Refresh</button></div></div>
         {flash&&<div className="mt-4 rounded-xl bg-sky-50 p-3 text-sky-800">{flash}</div>}
         {error&&<div role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-red-700">{error}</div>}
         {!loading&&!error&&<div className={`mt-5 rounded-2xl p-4 font-semibold ${overdue?'bg-red-50 text-red-800':pending?'bg-amber-50 text-amber-800':'bg-green-50 text-green-800'}`}>{overdue?`🔴 Overdue Coaching — ${overdue} review${overdue===1?'':'s'} pending for more than 2 business days.`:pending?`⚠ Coaching Reminder — ${pending} QA review${pending===1?' is':'s are'} still waiting for coaching confirmation.`:'✅ All Coaching Completed — There are no pending coaching reviews in this view.'}</div>}
