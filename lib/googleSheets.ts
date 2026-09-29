@@ -111,6 +111,10 @@ async function readCenter(center: Center): Promise<Review[]> {
         positive: /good job|positive/i.test(
           norm(g('Quick Coaching')) + ' ' + norm(g('Business impact'))
         ),
+        tlDisputed: false,
+        disputeBy: '',
+        disputeDate: '',
+        disputeReason: '',
       } satisfies Review;
     })
     .filter((r) => r.callId);
