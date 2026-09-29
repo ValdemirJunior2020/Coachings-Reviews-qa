@@ -19,6 +19,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
   const [saving,setSaving]=useState(false);
   const [flash,setFlash]=useState('');
   const [menuOpen,setMenuOpen]=useState(false);
+  const [viewMode,setViewMode]=useState<'cards'|'sheet'>('cards');
 
   async function load(){
     setLoading(true);setError('');
@@ -71,7 +72,8 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
   async function logout(){await fetch('/api/logout',{method:'POST'});location.href='/'}
 
   const nav=<nav className="mt-8 grid gap-2 text-sm">
-    <button onClick={()=>chooseStatus('All')} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">Dashboard / All Reviews</button>
+    <button onClick={()=>{setViewMode('cards');chooseStatus('All')}} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">Dashboard / All Reviews</button>
+    <button onClick={()=>{setViewMode('sheet');chooseStatus('All')}} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">📊 Daily Findings Sheet</button>
     <button onClick={()=>chooseStatus('Pending')} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">Pending Coaching</button>
     <button onClick={()=>chooseStatus('Overdue')} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">Overdue</button>
     <button onClick={()=>chooseStatus('Completed')} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">Completed Coaching</button>
@@ -118,12 +120,41 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
           <div className="glass rounded-2xl p-5"><h2 className="font-bold">Pending vs Completed</h2><div className="mt-5 flex items-center gap-6"><div className="h-32 w-32 rounded-full" style={{background:`conic-gradient(#0284c7 0 ${pct}%, #f1c75b ${pct}% 100%)`}} aria-label={`${pct}% completed`}/><div className="space-y-2 text-sm"><div>● Completed: <b>{completed}</b></div><div>○ Pending/Overdue: <b>{pending+overdue}</b></div></div></div></div>
         </div>}
 
-        <div className="mt-5 space-y-3">{loading?<div className="glass rounded-2xl p-8 text-center">Loading coaching reviews...</div>:filtered.length===0?<div className="glass rounded-2xl p-8 text-center">No reviews match these filters.</div>:filtered.map(r=><article key={`${r.center}-${r.callId}`} className={`glass rounded-2xl p-5 ${r.positive?'positive':'correction'}`}>
+        {viewMode==='sheet'?<div className="glass mt-5 overflow-hidden rounded-2xl">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-white/70 p-4"><div><h2 className="font-bold">Daily Findings Sheet</h2><p className="text-sm text-slate-500">{admin?(filters.center==='All'?'All centers':filters.center):center} · {filtered.length} review{filtered.length===1?'':'s'}</p></div><button onClick={()=>setViewMode('cards')} className="focusable rounded-xl border bg-white px-4 py-2 text-sm">Card View</button></div>
+          <div className="overflow-x-auto">
+            <table className="min-w-[2800px] border-collapse text-xs">
+              <thead className="sticky top-0 bg-slate-100 text-left">
+                <tr>{['Date','Booking Itinerary number','Call center',"Agent's name",'Call ID','What guest needed?','What happened?','The Correct Matrix Process','Business impact','Quick Coaching','Call Lenght','Date-of-the-call','Call Month','Coached?','Date Coached','Coached By','Coaching Response / Notes','Confirmation Link'].map(h=><th key={h} className="border-b border-r p-3 font-bold text-slate-700">{h}</th>)}</tr>
+              </thead>
+              <tbody>{loading?<tr><td colSpan={18} className="p-8 text-center">Loading coaching reviews...</td></tr>:filtered.length===0?<tr><td colSpan={18} className="p-8 text-center">No reviews match these filters.</td></tr>:filtered.map(r=><tr key={`sheet-${r.center}-${r.callId}`} className="align-top hover:bg-sky-50/50">
+                <td className="border-b border-r p-3 whitespace-nowrap">{r.qaDate||'—'}</td>
+                <td className="border-b border-r p-3 whitespace-nowrap">{r.itinerary||'—'}</td>
+                <td className="border-b border-r p-3 whitespace-nowrap">{r.center}</td>
+                <td className="border-b border-r p-3 whitespace-nowrap font-semibold">{r.agent}</td>
+                <td className="border-b border-r p-3 whitespace-nowrap">{r.callId}</td>
+                <td className="border-b border-r p-3 min-w-[260px] whitespace-normal">{r.guestNeeded||'—'}</td>
+                <td className="border-b border-r p-3 min-w-[340px] whitespace-normal">{r.happened||'—'}</td>
+                <td className="border-b border-r p-3 min-w-[340px] whitespace-normal">{r.matrixProcess||'—'}</td>
+                <td className="border-b border-r p-3 min-w-[280px] whitespace-normal">{r.businessImpact||'—'}</td>
+                <td className="border-b border-r p-3 min-w-[300px] whitespace-normal">{r.quickCoaching||'—'}</td>
+                <td className="border-b border-r p-3 whitespace-nowrap">{r.callLength||'—'}</td>
+                <td className="border-b border-r p-3 whitespace-nowrap">{r.callDate||'—'}</td>
+                <td className="border-b border-r p-3 whitespace-nowrap">{r.callMonth||'—'}</td>
+                <td className="border-b border-r p-3 whitespace-nowrap">{r.coached?'Yes':'No'}</td>
+                <td className="border-b border-r p-3 whitespace-nowrap">{r.dateCoached||'—'}</td>
+                <td className="border-b border-r p-3 whitespace-nowrap">{r.coachedBy||'—'}</td>
+                <td className="border-b border-r p-3 min-w-[280px] whitespace-normal">{r.coachingNotes||'—'}</td>
+                <td className="border-b p-3 min-w-[220px] break-all">{r.confirmationLink||'—'}</td>
+              </tr>)}</tbody>
+            </table>
+          </div>
+        </div>:<div className="mt-5 space-y-3">{loading?<div className="glass rounded-2xl p-8 text-center">Loading coaching reviews...</div>:filtered.length===0?<div className="glass rounded-2xl p-8 text-center">No reviews match these filters.</div>:filtered.map(r=><article key={`${r.center}-${r.callId}`} className={`glass rounded-2xl p-5 ${r.positive?'positive':'correction'}`}>
           <div className="flex flex-wrap justify-between gap-3"><div><div className="text-xs font-bold uppercase tracking-wide text-slate-500">{r.center}</div><h3 className="text-lg font-bold">{r.agent}</h3><div className="text-sm text-slate-500">Itinerary {r.itinerary||'N/A'} · {r.callId}</div></div><span className={`status ${r.status.toLowerCase()}`}>{r.status==='Overdue'?'● ':r.status==='Completed'?'✓ ':'○ '}{r.status}</span></div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2"><Info label="QA Review Date" value={r.qaDate}/><Info label="Date of Call" value={r.callDate}/><Info label="What guest needed" value={r.guestNeeded}/><Info label="What happened" value={r.happened}/><Info label="Correct Matrix Process" value={r.matrixProcess}/><Info label="Business impact" value={r.businessImpact}/><div className="md:col-span-2"><Info label="Quick Coaching" value={r.quickCoaching}/></div></div>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-4"><div className="text-sm text-slate-600">Call Length: {r.callLength||'—'} · Age: {r.ageBusinessDays} business day(s){r.coached&&<> · Coached by {r.coachedBy||'—'} on {r.dateCoached||'—'}</>}</div><div className="flex gap-2">{r.coached?<><button onClick={()=>setModal(r)} className="focusable rounded-xl border bg-white px-4 py-2">Edit Coaching</button>{admin&&<button onClick={()=>reopen(r)} className="focusable rounded-xl border border-red-200 bg-white px-4 py-2 text-red-700">Reopen</button>}</>:<button onClick={()=>setModal(r)} className="focusable rounded-xl bg-sky-700 px-4 py-2 font-bold text-white">Mark as Coached</button>}</div></div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2"><Info label="Date" value={r.qaDate}/><Info label="Date-of-the-call" value={r.callDate}/><Info label="What guest needed?" value={r.guestNeeded}/><Info label="What happened?" value={r.happened}/><Info label="The Correct Matrix Process" value={r.matrixProcess}/><Info label="Business impact" value={r.businessImpact}/><div className="md:col-span-2"><Info label="Quick Coaching" value={r.quickCoaching}/></div></div>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-4"><div className="text-sm text-slate-600">Call Lenght: {r.callLength||'—'} · Call Month: {r.callMonth||'—'} · Age: {r.ageBusinessDays} business day(s){r.coached&&<> · Coached by {r.coachedBy||'—'} on {r.dateCoached||'—'}</>}</div><div className="flex gap-2">{r.coached?<><button onClick={()=>setModal(r)} className="focusable rounded-xl border bg-white px-4 py-2">Edit Coaching</button>{admin&&<button onClick={()=>reopen(r)} className="focusable rounded-xl border border-red-200 bg-white px-4 py-2 text-red-700">Reopen</button>}</>:<button onClick={()=>setModal(r)} className="focusable rounded-xl bg-sky-700 px-4 py-2 font-bold text-white">Mark as Coached</button>}</div></div>
           {r.coached&&r.coachingNotes&&<div className="mt-3 rounded-xl bg-white/70 p-3"><b>Coaching Response / Notes:</b> {r.coachingNotes}</div>}
-        </article>)}</div>
+        </article>)}</div>}
       </div>
     </main>
 
