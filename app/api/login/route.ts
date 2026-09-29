@@ -4,7 +4,7 @@ import { authenticate, createSession } from '@/lib/auth';
 export async function POST(req: Request) {
   try {
     const { email, password } = await req.json();
-    const u = authenticate(String(email || ''), String(password || ''));
+    const u = await authenticate(String(email || ''), String(password || ''));
     if (!u) {
       return NextResponse.json({ error: 'Invalid email or password.' }, { status: 401 });
     }
