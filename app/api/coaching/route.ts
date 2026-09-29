@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { updateCoaching } from '@/lib/reviews';
 import { canEditCenter } from '@/lib/permissions';
+import { setCoachedRowHighlight } from '@/lib/googleSheets';
 import type { Center } from '@/lib/types';
 
 const centers:Center[]=['Buwelo','WNS','Concentrix','Telus'];
@@ -15,8 +16,18 @@ export async function PATCH(req:Request){
     if(!canEditCenter(s,center)) return NextResponse.json({error:'You cannot modify another center.'},{status:403});
     const coached=Boolean(b.coached);
     if(coached&&(!b.coachedBy||!b.dateCoached)) return NextResponse.json({error:'Coached By and Date Coached are required.'},{status:400});
-    const review=await updateCoaching({center,callId:String(b.callId||''),coached,dateCoached:b.dateCoached,coachedBy:b.coachedBy,notes:b.notes,actor:s.email,role:s.role});
-    return NextResponse.json({review,message:coached?'Coaching saved successfully.':'Coaching reopened.'});
+    const callId=String(b.callId||'');
+    const review=await updateCoaching({center,callId,coached,dateCoached:b.dateCoached,coachedBy:b.coachedBy,notes:b.notes,actor:s.email,role:s.role});
+    let sheetSynced=true;
+    let sheetWarning='';
+    try{
+      await setCoachedRowHighlight(center,callId,coached);
+    }catch(sheetError){
+      sheetSynced=false;
+      sheetWarning=sheetError instanceof Error?sheetError.message:'Google Sheet highlight failed.';
+      console.error('google-sheet-highlight',sheetError);
+    }
+    return NextResponse.json({review,sheetSynced,sheetWarning,message:coached?'Coaching saved successfully.':'Coaching reopened.'});
   }catch(e){
     console.error('coaching',e);
     return NextResponse.json({error:e instanceof Error?e.message:'Firebase update failed.'},{status:500});
