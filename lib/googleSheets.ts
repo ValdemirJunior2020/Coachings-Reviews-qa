@@ -312,7 +312,7 @@ function coachingSheetsClient() {
  * Finds a review by Call ID on the center tab and colors the entire source row.
  * Light green = coached. White = reopened.
  */
-export async function setCoachedRowHighlight(center: Center, callId: string, coached: boolean) {
+export async function setReviewRowColor(center: Center, callId: string, state: 'coached'|'disputed'|'normal') {
   const api = coachingSheetsClient();
   const id = process.env.GOOGLE_SHEETS_SPREADSHEET_ID || DAILY_FINDINGS_SPREADSHEET_ID;
 
@@ -350,9 +350,7 @@ export async function setCoachedRowHighlight(center: Center, callId: string, coa
   if (matches.length > 1) throw new Error(`Duplicate Call ID ${callId} found in Google Sheet tab ${center}`);
 
   const rowNumber = matches[0];
-  const backgroundColor = coached
-    ? { red: 0.88, green: 0.96, blue: 0.88 }
-    : { red: 1, green: 1, blue: 1 };
+  const backgroundColor = state === 'disputed' ? { red: 1.0, green: 0.92, blue: 0.78 } : state === 'coached' ? { red: 0.88, green: 0.96, blue: 0.88 } : { red: 1, green: 1, blue: 1 };
 
   await api.spreadsheets.batchUpdate({
     spreadsheetId: id,
@@ -372,4 +370,8 @@ export async function setCoachedRowHighlight(center: Center, callId: string, coa
       }],
     },
   });
+}
+
+export async function setCoachedRowHighlight(center: Center, callId: string, coached: boolean) {
+  return setReviewRowColor(center, callId, coached ? 'coached' : 'normal');
 }
