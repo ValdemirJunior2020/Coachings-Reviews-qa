@@ -60,11 +60,23 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
   async function uploadDaily(file:File){
     setFlash('Uploading Daily Findings...');
     const body=new FormData();body.append('file',file);
-    const res=await fetch('/api/import',{method:'POST',body});
-    const d=await res.json();
-    if(!res.ok){setFlash(d.error||'Upload failed.');return}
-    setFlash(`✓ Upload complete — ${d.added} new · ${d.updated} updated · ${d.skipped} skipped.`);
-    await load();
+    try{
+      const res=await fetch('/api/import',{method:'POST',body});
+      const contentType=res.headers.get('content-type')||'';
+      if(!contentType.includes('application/json')){
+        const text=await res.text();
+        console.error('Import returned non-JSON response:',res.status,text.slice(0,500));
+        setFlash(`Upload failed on the server (HTTP ${res.status}). Check the Netlify function log.`);
+        return;
+      }
+      const d=await res.json();
+      if(!res.ok){setFlash(d.error||`Upload failed (HTTP ${res.status}).`);return}
+      setFlash(`✓ Upload complete — ${d.added} new · ${d.updated} updated · ${d.skipped} skipped.`);
+      await load();
+    }catch(e){
+      console.error('Upload failed',e);
+      setFlash(e instanceof Error?`Upload failed: ${e.message}`:'Upload failed.');
+    }
   }
   function downloadReviews(){
     const selected=admin&&filters.center!=='All'?String(filters.center):'';
