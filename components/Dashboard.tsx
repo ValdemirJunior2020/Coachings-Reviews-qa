@@ -46,7 +46,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     const f=new FormData(e.currentTarget);
     const res=await fetch('/api/coaching',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({center:modal.center,callId:modal.callId,coached:true,coachedBy:f.get('coachedBy'),dateCoached:f.get('dateCoached'),notes:f.get('notes')})});
     const d=await res.json();
-    if(res.ok){setReviews(x=>x.map(r=>r.callId===d.review.callId&&r.center===d.review.center?d.review:r));setModal(null);setFlash('✓ Coaching saved successfully.')}
+    if(res.ok){setReviews(x=>x.map(r=>r.callId===d.review.callId&&r.center===d.review.center?d.review:r));setModal(null);setFlash(d.sheetSynced?'✓ Coaching saved — row highlighted light green in the web sheet and Google Sheet.':`✓ Coaching saved in the web tool. Google Sheet highlight needs attention: ${d.sheetWarning||'sync failed.'}`)}
     else setFlash(d.error||'Save failed.');
     setSaving(false);
   }
@@ -54,7 +54,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     if(!confirm(`Reopen coaching for ${r.agent}? This will move it back to Pending.`))return;
     const res=await fetch('/api/coaching',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({center:r.center,callId:r.callId,coached:false})});
     const d=await res.json();
-    if(res.ok){setReviews(x=>x.map(v=>v.callId===d.review.callId&&v.center===d.review.center?d.review:v));setFlash('Coaching reopened.')}
+    if(res.ok){setReviews(x=>x.map(v=>v.callId===d.review.callId&&v.center===d.review.center?d.review:v));setFlash(d.sheetSynced?'Coaching reopened — Google Sheet row reset.':`Coaching reopened. Google Sheet reset needs attention: ${d.sheetWarning||'sync failed.'}`)}
     else setFlash(d.error||'Reopen failed.');
   }
   async function uploadDaily(file:File){
@@ -140,7 +140,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
               <thead className="sticky top-0 bg-slate-100 text-left">
                 <tr>{['Date','Booking Itinerary number','Call center',"Agent's name",'Call ID','What guest needed?','What happened?','The Correct Matrix Process','Business impact','Quick Coaching','Call Lenght','Date-of-the-call','Call Month','Coached?','Date Coached','Coached By','Coaching Response / Notes','Confirmation Link'].map(h=><th key={h} className="border-b border-r p-3 font-bold text-slate-700">{h}</th>)}</tr>
               </thead>
-              <tbody>{loading?<tr><td colSpan={18} className="p-8 text-center">Loading coaching reviews...</td></tr>:filtered.length===0?<tr><td colSpan={18} className="p-8 text-center">No reviews match these filters.</td></tr>:filtered.map(r=><tr key={`sheet-${r.center}-${r.callId}`} className="align-top hover:bg-sky-50/50">
+              <tbody>{loading?<tr><td colSpan={18} className="p-8 text-center">Loading coaching reviews...</td></tr>:filtered.length===0?<tr><td colSpan={18} className="p-8 text-center">No reviews match these filters.</td></tr>:filtered.map(r=><tr key={`sheet-${r.center}-${r.callId}`} className={`align-top ${r.coached?'bg-green-50 hover:bg-green-100':'hover:bg-sky-50/50'}`}>
                 <td className="border-b border-r p-3 whitespace-nowrap">{r.qaDate||'—'}</td>
                 <td className="border-b border-r p-3 whitespace-nowrap">{r.itinerary||'—'}</td>
                 <td className="border-b border-r p-3 whitespace-nowrap">{r.center}</td>
