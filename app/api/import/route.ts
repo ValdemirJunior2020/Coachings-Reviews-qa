@@ -37,7 +37,9 @@ export async function POST(req:Request){
    const rows=raw.slice(hi+1).map(row=>Object.fromEntries(headers.map((h,i)=>[h,row[i]??''])) as Record<string,unknown>);
 
    for(const r of rows){
-    const callId=s(r['Call ID']); if(!callId)continue;
+    const callId=s(r['Call ID']);
+    const invalidCallId=!callId||['not identified','n/a','na','none'].includes(callId.toLowerCase())||callId.includes('/');
+    if(invalidCallId){skipped++;continue}
     const itinerary=s(r['Booking Itinerary number']);
     if(!itinerary||['not identified','n/a','na','none'].includes(itinerary.toLowerCase())){skipped++;continue}
     if(seen.has(callId)){skipped++;continue}
