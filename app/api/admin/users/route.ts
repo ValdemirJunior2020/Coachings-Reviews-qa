@@ -40,7 +40,7 @@ export async function POST(req:Request){
     const password=String(b.password||'');
     if(!name||!email||!email.includes('@')) return NextResponse.json({error:'Name and a valid email are required.'},{status:400});
     if(password.length<8) return NextResponse.json({error:'Password must be at least 8 characters.'},{status:400});
-    if(role==='center'&&!centers.includes(center)) return NextResponse.json({error:'Select a valid call center.'},{status:400});
+    if(role==='center'&&(!center||!centers.includes(center))) return NextResponse.json({error:'Select a valid call center.'},{status:400});
     const existing=await db().collection('loginUsers').where('emailLower','==',emailLower).limit(1).get();
     if(!existing.empty) return NextResponse.json({error:'That email already exists.'},{status:409});
     const ref=db().collection('loginUsers').doc();
@@ -74,7 +74,7 @@ export async function PATCH(req:Request){
     const centerRaw=String(b.center||'');
     const center=centers.includes(centerRaw as Center)?centerRaw as Center:undefined;
     if(!name||!email||!email.includes('@')) return NextResponse.json({error:'Name and a valid email are required.'},{status:400});
-    if(role==='center'&&!centers.includes(center)) return NextResponse.json({error:'Select a valid call center.'},{status:400});
+    if(role==='center'&&(!center||!centers.includes(center))) return NextResponse.json({error:'Select a valid call center.'},{status:400});
     const duplicate=await db().collection('loginUsers').where('emailLower','==',emailLower).get();
     if(duplicate.docs.some(d=>d.id!==id)) return NextResponse.json({error:'That email already exists.'},{status:409});
     const update:Record<string,unknown>={
