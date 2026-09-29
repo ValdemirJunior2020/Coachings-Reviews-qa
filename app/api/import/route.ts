@@ -10,6 +10,9 @@ const s=(v:unknown)=>String(v??'').trim();
 const date=(v:unknown)=>{if(!v)return '';if(v instanceof Date)return v.toISOString().slice(0,10);if(typeof v==='number'){const d=new Date(Date.UTC(1899,11,30)+v*86400000);return d.toISOString().slice(0,10)}const d=new Date(String(v));return Number.isNaN(d.getTime())?s(v):d.toISOString().slice(0,10)};
 const bool=(v:unknown)=>typeof v==='boolean'?v:['true','yes','1','coached','completed'].includes(s(v).toLowerCase());
 
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
 export async function POST(req:Request){
  const session=await getSession();
  if(!session||session.role!=='admin')return NextResponse.json({error:'Admin access required.'},{status:403});
@@ -29,10 +32,15 @@ export async function POST(req:Request){
     const callId=s(r['Call ID']); if(!callId)continue;
     const itinerary=s(r['Booking Itinerary number']);
     if(!itinerary||['not identified','n/a','na','none'].includes(itinerary.toLowerCase())){skipped++;continue}
-    const ref=db().collection('reviews').doc(callId); const old=await ref.get();
+    const ref=db().collection('reviews').doc(callId);
     const qa={center,qaDate:date(r['Date']),itinerary,agent:s(r["Agent's name"]),callId,guestNeeded:s(r['What guest needed?']),happened:s(r['What happened?']),matrixProcess:s(r['The Correct Matrix Process']),businessImpact:s(r['Business impact']),quickCoaching:s(r['Quick Coaching']),callLength:s(r['Call Lenght']),callDate:date(r['Date-of-the-call']),callMonth:s(r['Call Month']),importedAt:FieldValue.serverTimestamp()};
-    if(old.exists){await ref.set(qa,{merge:true});updated++}
-    else{await ref.set({...qa,coached:bool(r['Coached?']),dateCoached:date(r['Date Coached']),coachedBy:s(r['Coached By']),coachingNotes:s(r['Coaching Response / Notes']),confirmationLink:s(r['Confirmation Link'])});added++}
+    const result=await db().runTransaction(async tx=>{
+      const old=await tx.get(ref);
+      if(old.exists){tx.set(ref,qa,{merge:true});return 'updated' as const}
+      tx.set(ref,{...qa,coached:bool(r['Coached?']),dateCoached:date(r['Date Coached']),coachedBy:s(r['Coached By']),coachingNotes:s(r['Coaching Response / Notes']),confirmationLink:s(r['Confirmation Link'])});
+      return 'added' as const;
+    });
+    if(result==='added')added++;else updated++
    }
   }
   return NextResponse.json({added,updated,skipped});
