@@ -32,4 +32,8 @@ export interface Review {
   status: ReviewStatus;
   ageBusinessDays: number;
   positive: boolean;
+  tlDisputed: boolean;
+  disputeBy: string;
+  disputeDate: string;
+  disputeReason: string;
 }
