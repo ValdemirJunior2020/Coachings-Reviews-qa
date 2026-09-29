@@ -24,6 +24,7 @@ const d=(v:unknown)=>{
 };
 const b=(v:unknown)=>typeof v==='boolean'?v:['true','yes','1','coached','completed'].includes(s(v).toLowerCase());
 
+async function main(){
 let imported=0, skipped=0;
 for(const center of centers){
   const ws=wb.Sheets[center];
@@ -56,3 +57,6 @@ for(const center of centers){
   }
 }
 console.log(`Firebase import complete: ${imported} reviews imported, ${skipped} rows skipped because itinerary was not identified.`);
+}
+
+main().catch((error)=>{console.error(error);process.exitCode=1;});
