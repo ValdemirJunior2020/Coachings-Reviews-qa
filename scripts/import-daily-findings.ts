@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import * as XLSX from 'xlsx';
 import { cert, initializeApp } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
