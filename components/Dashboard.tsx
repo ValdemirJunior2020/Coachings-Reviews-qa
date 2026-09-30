@@ -6,7 +6,7 @@ import type {Center,Review,ReviewStatus} from '@/lib/types';
 
 const CENTERS:Center[]=['Buwelo','WNS','Concentrix','Telus'];
 type PresenceUser={id:string;email:string;name:string;role:'admin'|'center';center:Center|'';page:string;status:'online'|'idle'|'offline';lastSeen:string};
-type CenterRank={name:string;center:Center;avg:number|null;count:number;rank:number};
+type CenterRank={name:string;center:Center|null;rank:number;isOwn:boolean;coachingScore:number|null;completionPct:number|null;speedPct:number|null;avgSpeedDays:number|null;total:number|null;coached:number|null;pending:number|null};
 type AgentRank={name:string;center:Center;avg:number;count:number;rank:number};
 const emptyFilters=(center?:Center):ReviewFilters=>({search:'',center:center||'All',agent:'All',status:'All',itinerary:'',callId:'',qaDate:'',callDate:'',coachedDate:'',range:'All',from:'',to:''});
 
@@ -118,7 +118,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     const f=new FormData(e.currentTarget);
     const res=await fetch('/api/coaching',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({center:modal.center,callId:modal.callId,coached:true,coachedBy:f.get('coachedBy'),dateCoached:f.get('dateCoached'),notes:f.get('notes')})});
     const d=await res.json();
-    if(res.ok){setReviews(x=>x.map(r=>r.callId===d.review.callId&&r.center===d.review.center?d.review:r));setModal(null);setFlash(d.sheetSynced?'✓ Coaching saved — row highlighted light green in the web sheet and Google Sheet.':`✓ Coaching saved in the web tool. Google Sheet highlight needs attention: ${d.sheetWarning||'sync failed.'}`)}
+    if(res.ok){setReviews(x=>x.map(r=>r.callId===d.review.callId&&r.center===d.review.center?d.review:r));setModal(null);setFlash(d.sheetSynced?'✓ Coaching saved — row highlighted light green in the web sheet and Google Sheet.':`✓ Coaching saved in the web tool. Google Sheet highlight needs attention: ${d.sheetWarning||'sync failed.'}`);try{const lr=await fetch('/api/leaderboard',{cache:'no-store'});const ld=await lr.json();if(lr.ok){setCenterRanks(ld.centerRanks||[]);setAgentRanks(ld.agentRanks||[])}}catch{}}
     else setFlash(d.error||'Save failed.');
     setSaving(false);
   }
@@ -126,7 +126,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     if(!confirm(`Reopen coaching for ${r.agent}? This will move it back to Pending.`))return;
     const res=await fetch('/api/coaching',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({center:r.center,callId:r.callId,coached:false})});
     const d=await res.json();
-    if(res.ok){setReviews(x=>x.map(v=>v.callId===d.review.callId&&v.center===d.review.center?d.review:v));setFlash(d.sheetSynced?'Coaching reopened — Google Sheet row reset.':`Coaching reopened. Google Sheet reset needs attention: ${d.sheetWarning||'sync failed.'}`)}
+    if(res.ok){setReviews(x=>x.map(v=>v.callId===d.review.callId&&v.center===d.review.center?d.review:v));setFlash(d.sheetSynced?'Coaching reopened — Google Sheet row reset.':`Coaching reopened. Google Sheet reset needs attention: ${d.sheetWarning||'sync failed.'}`);try{const lr=await fetch('/api/leaderboard',{cache:'no-store'});const ld=await lr.json();if(lr.ok){setCenterRanks(ld.centerRanks||[]);setAgentRanks(ld.agentRanks||[])}}catch{}}
     else setFlash(d.error||'Reopen failed.');
   }
   async function submitDispute(e:React.FormEvent<HTMLFormElement>){
@@ -215,13 +215,17 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
 
         <div className="mt-5 grid gap-4 xl:grid-cols-2">
           <section className="glass rounded-2xl p-5">
-            <div className="flex items-center justify-between gap-3"><div><h2 className="font-bold">🏆 Center Leaderboard</h2><p className="text-sm text-slate-500">Public ranking · KPI {leaderboardKpi}%</p></div><span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-800">QA Score</span></div>
+            <div className="flex items-center justify-between gap-3"><div><h2 className="font-bold">🏆 Center Coaching Leaderboard</h2><p className="text-sm text-slate-500">70% reviews completed · 30% coached within 2 business days</p></div><span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-800">Coaching Activity</span></div>
             <div className="mt-4 space-y-2">
-              {centerRanks.length===0?<div className="text-sm text-slate-500">No QA scores loaded yet.</div>:centerRanks.map(r=><div key={r.center} className={`rounded-xl border p-3 ${!admin&&r.center===center?'border-sky-300 bg-sky-50':'bg-white/70'}`}>
+              {centerRanks.length===0?<div className="text-sm text-slate-500">No coaching activity loaded yet.</div>:centerRanks.map((r,i)=><div key={`${r.rank}-${i}`} className={`rounded-xl border p-3 ${r.isOwn?'border-sky-300 bg-sky-50':'bg-white/70'}`}>
                 <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3"><span className="text-xl">{medal(r.rank)}</span><div><div className="font-bold">{r.center}{!admin&&r.center===center?' · Your Center':''}</div><div className="text-xs text-slate-500">{r.count} scored call{r.count===1?'':'s'}</div></div></div>
-                  <div className="text-right">{r.avg===null?<div className="text-sm font-semibold text-slate-400">Score private</div>:<><div className={`text-xl font-bold ${r.avg>=leaderboardKpi?'text-green-700':'text-amber-700'}`}>{r.avg.toFixed(1)}%</div><div className="text-xs text-slate-500">{r.avg>=leaderboardKpi?'Passing KPI':'Below KPI'}</div></>}</div>
+                  <div className="flex items-center gap-3"><span className="text-xl">{medal(r.rank)}</span><div><div className="font-bold">{r.name}{r.isOwn?' · Your Center':''}</div><div className="text-xs text-slate-500">{r.isOwn||admin?'Coaching completion + speed':'Private center'}</div></div></div>
+                  <div className="text-right">{r.coachingScore===null?<div className="text-sm font-semibold text-slate-400">Numbers private</div>:<><div className="text-xl font-bold text-sky-800">{r.coachingScore.toFixed(1)}</div><div className="text-xs text-slate-500">activity score</div></>}</div>
                 </div>
+                {r.coachingScore!==null&&<div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-lg bg-white/70 p-2"><div className="font-bold text-slate-500">Reviews coached</div><div className="mt-1 text-base font-bold">{r.completionPct?.toFixed(1)}%</div><div className="text-slate-500">{r.coached}/{r.total} completed</div></div>
+                  <div className="rounded-lg bg-white/70 p-2"><div className="font-bold text-slate-500">Within 2 business days</div><div className="mt-1 text-base font-bold">{r.speedPct?.toFixed(1)}%</div><div className="text-slate-500">{r.avgSpeedDays===null?'No completed timing yet':`Avg ${r.avgSpeedDays.toFixed(1)} business days`}</div></div>
+                </div>}
               </div>)}
             </div>
           </section>
