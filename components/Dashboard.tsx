@@ -6,6 +6,8 @@ import type {Center,Review,ReviewStatus} from '@/lib/types';
 
 const CENTERS:Center[]=['Buwelo','WNS','Concentrix','Telus'];
 type PresenceUser={id:string;email:string;name:string;role:'admin'|'center';center:Center|'';page:string;status:'online'|'idle'|'offline';lastSeen:string};
+type CenterRank={name:string;center:Center;avg:number|null;count:number;rank:number};
+type AgentRank={name:string;center:Center;avg:number;count:number;rank:number};
 const emptyFilters=(center?:Center):ReviewFilters=>({search:'',center:center||'All',agent:'All',status:'All',itinerary:'',callId:'',qaDate:'',callDate:'',coachedDate:'',range:'All',from:'',to:''});
 
 function Stat({label,value}:{label:string;value:string|number}){return <div className="glass rounded-2xl p-4"><div className="text-sm text-slate-500">{label}</div><div className="mt-1 text-2xl font-bold">{value}</div></div>}
@@ -25,6 +27,9 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
   const [disputedOnly,setDisputedOnly]=useState(false);
   const [disputeModal,setDisputeModal]=useState<Review|null>(null);
   const [presence,setPresence]=useState<PresenceUser[]>([]);
+  const [centerRanks,setCenterRanks]=useState<CenterRank[]>([]);
+  const [agentRanks,setAgentRanks]=useState<AgentRank[]>([]);
+  const [leaderboardKpi,setLeaderboardKpi]=useState(90);
 
   async function load(){
     setLoading(true);setError('');
@@ -33,6 +38,20 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     finally{setLoading(false)}
   }
   useEffect(()=>{load()},[]);
+  useEffect(()=>{
+    const loadLeaderboard=async()=>{
+      try{
+        const res=await fetch('/api/leaderboard',{cache:'no-store'});
+        const d=await res.json();
+        if(res.ok){
+          setCenterRanks(d.centerRanks||[]);
+          setAgentRanks(d.agentRanks||[]);
+          setLeaderboardKpi(Number(d.kpi)||90);
+        }
+      }catch{}
+    };
+    loadLeaderboard();
+  },[]);
 
   useEffect(()=>{
     let lastInteraction=Date.now();
@@ -84,6 +103,12 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
   const overdue=filtered.filter(r=>r.status==='Overdue').length;
   const total=filtered.length;
   const pct=total?Math.round(completed/total*100):0;
+  const leaderboardAgents=useMemo(()=>{
+    const selected=admin&&filters.center!=='All'?filters.center:center;
+    const rows=selected?agentRanks.filter(a=>a.center===selected):agentRanks;
+    return rows.slice(0,12);
+  },[agentRanks,admin,filters.center,center]);
+  const medal=(rank:number)=>rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':`#${rank}`;
 
   function patch<K extends keyof ReviewFilters>(key:K,value:ReviewFilters[K]){setFilters(f=>({...f,[key]:value}))}
   function chooseStatus(value:'All'|ReviewStatus){setDisputedOnly(false);patch('status',value);setMenuOpen(false)}
@@ -133,6 +158,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
       if(!res.ok){setFlash(d.error||`Upload failed (HTTP ${res.status}).`);return}
       setFlash(`✓ Upload complete — ${d.added} new · ${d.updated} updated · ${d.skipped} skipped.`);
       await load();
+      try{const lr=await fetch('/api/leaderboard',{cache:'no-store'});const ld=await lr.json();if(lr.ok){setCenterRanks(ld.centerRanks||[]);setAgentRanks(ld.agentRanks||[]);setLeaderboardKpi(Number(ld.kpi)||90)}}catch{}
     }catch(e){
       console.error('Upload failed',e);
       setFlash(e instanceof Error?`Upload failed: ${e.message}`:'Upload failed.');
@@ -186,6 +212,33 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
             </div>)}
           </div>
         </div>}
+
+        <div className="mt-5 grid gap-4 xl:grid-cols-2">
+          <section className="glass rounded-2xl p-5">
+            <div className="flex items-center justify-between gap-3"><div><h2 className="font-bold">🏆 Center Leaderboard</h2><p className="text-sm text-slate-500">Public ranking · KPI {leaderboardKpi}%</p></div><span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-800">QA Score</span></div>
+            <div className="mt-4 space-y-2">
+              {centerRanks.length===0?<div className="text-sm text-slate-500">No QA scores loaded yet.</div>:centerRanks.map(r=><div key={r.center} className={`rounded-xl border p-3 ${!admin&&r.center===center?'border-sky-300 bg-sky-50':'bg-white/70'}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3"><span className="text-xl">{medal(r.rank)}</span><div><div className="font-bold">{r.center}{!admin&&r.center===center?' · Your Center':''}</div><div className="text-xs text-slate-500">{r.count} scored call{r.count===1?'':'s'}</div></div></div>
+                  <div className="text-right">{r.avg===null?<div className="text-sm font-semibold text-slate-400">Score private</div>:<><div className={`text-xl font-bold ${r.avg>=leaderboardKpi?'text-green-700':'text-amber-700'}`}>{r.avg.toFixed(1)}%</div><div className="text-xs text-slate-500">{r.avg>=leaderboardKpi?'Passing KPI':'Below KPI'}</div></>}</div>
+                </div>
+              </div>)}
+            </div>
+          </section>
+
+          <section className="glass rounded-2xl p-5">
+            <div className="flex items-center justify-between gap-3"><div><h2 className="font-bold">⭐ Agent Leaderboard</h2><p className="text-sm text-slate-500">{admin?(filters.center==='All'?'All centers':'Private view · '+filters.center):'Private to '+center} · KPI {leaderboardKpi}%</p></div><span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-800">Top QA</span></div>
+            <div className="mt-4 space-y-3">
+              {leaderboardAgents.length===0?<div className="text-sm text-slate-500">No agent QA scores loaded yet. Re-upload the current Daily Findings workbook once so the Scores tab is saved to Firebase.</div>:leaderboardAgents.map(a=><div key={`${a.center}-${a.name}`} className="rounded-xl border bg-white/70 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3"><span className="text-xl">{medal(a.rank)}</span><div className="min-w-0"><div className="truncate font-bold">{a.name}</div><div className="text-xs text-slate-500">{a.center} · {a.count} scored call{a.count===1?'':'s'}</div></div></div>
+                  <div className="shrink-0 text-right"><div className={`text-lg font-bold ${a.avg>=leaderboardKpi?'text-green-700':'text-red-700'}`}>{a.avg.toFixed(1)}%</div><div className={`text-[11px] font-bold ${a.avg>=leaderboardKpi?'text-green-700':'text-red-700'}`}>{a.avg>=leaderboardKpi?'✓ Passing':'⚠ Needs Attention'}</div></div>
+                </div>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div className={`h-2 rounded-full ${a.avg>=leaderboardKpi?'bg-green-500':'bg-red-400'}`} style={{width:`${Math.max(0,Math.min(100,a.avg))}%`}}/></div>
+              </div>)}
+            </div>
+          </section>
+        </div>
 
         {admin&&<div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{CENTERS.map(c=>{const rows=reviews.filter(r=>r.center===c),done=rows.filter(r=>r.coached).length,late=rows.filter(r=>r.status==='Overdue').length,centerPct=rows.length?Math.round(done/rows.length*100):0;return <button key={c} onClick={()=>patch('center',c)} className="glass focusable rounded-2xl p-4 text-left"><div className="font-bold">{c}</div><div className="mt-2 text-sm text-slate-600">{rows.length} Reviews · {rows.length-done} Pending · {late} Overdue</div><div className="mt-2 text-xl font-bold">{centerPct}% Complete</div></button>})}</div>}
 
