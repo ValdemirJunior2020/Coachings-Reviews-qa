@@ -25,6 +25,28 @@ export async function POST(req:Request){
   if(!/\.xlsx?$/i.test(file.name))return NextResponse.json({error:'Only .xlsx or .xls files are accepted.'},{status:400});
 
   const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true});
+  const scoreByCallId=new Map<string,{finalScore:number;scorePassFail:string;scoreMarkdowns:string}>();
+  const scoreWs=wb.Sheets['Scores'];
+  if(scoreWs){
+   const scoreRaw=XLSX.utils.sheet_to_json<unknown[]>(scoreWs,{header:1,defval:''});
+   const scoreHeaderIndex=scoreRaw.findIndex(r=>r.some(v=>s(v).toLowerCase()==='final score')&&r.some(v=>s(v).toLowerCase()==='call id'));
+   if(scoreHeaderIndex>=0){
+    const scoreHeaders=scoreRaw[scoreHeaderIndex].map(v=>s(v).toLowerCase());
+    const idx=(name:string)=>scoreHeaders.findIndex(h=>h===name.toLowerCase());
+    const callIdIx=idx('Call ID');
+    const finalScoreIx=idx('Final Score');
+    const passFailIx=idx('Pass/Fail');
+    const markdownsIx=idx('Markdowns');
+    for(const row of scoreRaw.slice(scoreHeaderIndex+1)){
+      const callId=s(row[callIdIx]);
+      if(!callId)continue;
+      const rawScore=row[finalScoreIx];
+      const n=typeof rawScore==='number'?rawScore:Number(String(rawScore??'').replace('%','').trim());
+      if(!Number.isFinite(n))continue;
+      scoreByCallId.set(callId,{finalScore:n,scorePassFail:s(row[passFailIx]),scoreMarkdowns:s(row[markdownsIx])});
+    }
+   }
+  }
   const imports:ImportRow[]=[];
   const seen=new Set<string>();
   let skipped=0;
@@ -53,6 +75,7 @@ export async function POST(req:Request){
       matrixProcess:s(r['The Correct Matrix Process']),businessImpact:s(r['Business impact']),
       quickCoaching:s(r['Quick Coaching']),callLength:s(r['Call Lenght']),
       callDate:date(r['Date-of-the-call']),callMonth:s(r['Call Month']),
+      ...(scoreByCallId.get(callId)??{}),
       importedAt:FieldValue.serverTimestamp()
      },
      initialCoaching:{
@@ -90,7 +113,7 @@ export async function POST(req:Request){
   }
   await Promise.all(commits);
 
-  return NextResponse.json({added,updated,skipped});
+  return NextResponse.json({added,updated,skipped,scored:scoreByCallId.size});
  }catch(e){
   console.error('import',e);
   return NextResponse.json({error:e instanceof Error?e.message:'Import failed.'},{status:500});
