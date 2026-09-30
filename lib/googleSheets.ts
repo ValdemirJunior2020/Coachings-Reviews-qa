@@ -115,6 +115,9 @@ async function readCenter(center: Center): Promise<Review[]> {
         disputeBy: '',
         disputeDate: '',
         disputeReason: '',
+        finalScore: null,
+        scorePassFail: '',
+        scoreMarkdowns: '',
       } satisfies Review;
     })
     .filter((r) => r.callId);
