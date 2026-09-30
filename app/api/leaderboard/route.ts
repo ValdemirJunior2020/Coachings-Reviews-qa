@@ -40,6 +40,11 @@ export async function GET(){
     .select('center','agent','finalScore','coached','qaDate','dateCoached')
     .get();
 
+  const now=new Date();
+  now.setHours(12,0,0,0);
+  const cutoff=new Date(now);
+  cutoff.setDate(cutoff.getDate()-30);
+
   const agentBuckets=new Map<string,ScoreBucket&{name:string;center:Center}>();
   const centerBuckets=new Map<Center,CenterCoachingBucket>();
 
@@ -51,6 +56,10 @@ export async function GET(){
     const d=doc.data();
     const center=d.center as Center;
     if(!centers.includes(center))continue;
+
+
+    const qaDate=parseDate(d.qaDate);
+    if(!qaDate||qaDate<cutoff||qaDate>now)continue;
 
     const cb=centerBuckets.get(center)!;
     cb.total++;
@@ -77,22 +86,39 @@ export async function GET(){
     }
   }
 
-  const rawCenterRanks=centers.map(center=>{
+  const rawStats=centers.map(center=>{
     const b=centerBuckets.get(center)!;
     const completionPct=b.total?b.coached/b.total*100:0;
     const speedPct=b.coached?b.onTime/b.coached*100:0;
     const avgSpeedDays=b.speedCount?b.speedDays/b.speedCount:null;
-    const coachingScore=completionPct*0.7+speedPct*0.3;
+    const rawScore=completionPct*0.7+speedPct*0.3;
     return {
       name:center,
       center,
-      avg:coachingScore,
+      rawScore,
       completionPct,
       speedPct,
       avgSpeedDays,
       total:b.total,
       coached:b.coached,
       pending:b.total-b.coached,
+    };
+  });
+
+  const totalReviews=rawStats.reduce((sum,r)=>sum+r.total,0);
+  const globalRawScore=totalReviews
+    ? rawStats.reduce((sum,r)=>sum+r.rawScore*r.total,0)/totalReviews
+    : 0;
+  const PRIOR_REVIEWS=20;
+
+  const rawCenterRanks=rawStats.map(r=>{
+    const adjustedScore=r.total
+      ? (r.rawScore*r.total+globalRawScore*PRIOR_REVIEWS)/(r.total+PRIOR_REVIEWS)
+      : 0;
+    return {
+      ...r,
+      avg:adjustedScore,
+      provisional:r.total<30,
     };
   }).sort((a,b)=>b.avg-a.avg||b.completionPct-a.completionPct||b.speedPct-a.speedPct||a.name.localeCompare(b.name))
     .map((r,i)=>({...r,rank:i+1}));
@@ -111,6 +137,7 @@ export async function GET(){
       total:canSeeDetails?r.total:null,
       coached:canSeeDetails?r.coached:null,
       pending:canSeeDetails?r.pending:null,
+      provisional:r.provisional,
     };
   });
 
@@ -122,7 +149,7 @@ export async function GET(){
 
   return NextResponse.json({
     kpi:90,
-    centerRankingFormula:'70% coaching completion + 30% coached within 2 business days',
+    centerRankingFormula:'Last 30 days: 70% coaching completion + 30% coached within 2 business days, lightly adjusted for small sample sizes',
     centerRanks,
     agentRanks
   });
