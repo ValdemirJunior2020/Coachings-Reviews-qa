@@ -36,4 +36,7 @@ export interface Review {
   disputeBy: string;
   disputeDate: string;
   disputeReason: string;
+  finalScore: number | null;
+  scorePassFail: string;
+  scoreMarkdowns: string;
 }
