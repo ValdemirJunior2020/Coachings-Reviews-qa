@@ -106,7 +106,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
   const leaderboardAgents=useMemo(()=>{
     const selected=admin&&filters.center!=='All'?filters.center:center;
     const rows=selected?agentRanks.filter(a=>a.center===selected):agentRanks;
-    return rows.slice(0,12);
+    return [...rows].sort((a,b)=>b.avg-a.avg||b.count-a.count||a.name.localeCompare(b.name)).slice(0,12).map((a,i)=>({...a,rank:i+1}));
   },[agentRanks,admin,filters.center,center]);
   const medal=(rank:number)=>rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':`#${rank}`;
 
