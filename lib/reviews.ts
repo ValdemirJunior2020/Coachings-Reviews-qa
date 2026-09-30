@@ -35,6 +35,9 @@ function toReview(data: Record<string, unknown>): Review {
     disputeBy: String(data.disputeBy ?? ''),
     disputeDate: String(data.disputeDate ?? ''),
     disputeReason: String(data.disputeReason ?? ''),
+    finalScore: typeof data.finalScore==='number' ? data.finalScore : null,
+    scorePassFail: String(data.scorePassFail ?? ''),
+    scoreMarkdowns: String(data.scoreMarkdowns ?? ''),
   };
 }
 
