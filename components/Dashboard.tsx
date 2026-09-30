@@ -6,7 +6,7 @@ import type {Center,Review,ReviewStatus} from '@/lib/types';
 
 const CENTERS:Center[]=['Buwelo','WNS','Concentrix','Telus'];
 type PresenceUser={id:string;email:string;name:string;role:'admin'|'center';center:Center|'';page:string;status:'online'|'idle'|'offline';lastSeen:string};
-type CenterRank={name:string;center:Center|null;rank:number;isOwn:boolean;coachingScore:number|null;completionPct:number|null;speedPct:number|null;avgSpeedDays:number|null;total:number|null;coached:number|null;pending:number|null};
+type CenterRank={name:string;center:Center|null;rank:number;isOwn:boolean;coachingScore:number|null;completionPct:number|null;speedPct:number|null;avgSpeedDays:number|null;total:number|null;coached:number|null;pending:number|null;provisional:boolean};
 type AgentRank={name:string;center:Center;avg:number;count:number;rank:number};
 const emptyFilters=(center?:Center):ReviewFilters=>({search:'',center:center||'All',agent:'All',status:'All',itinerary:'',callId:'',qaDate:'',callDate:'',coachedDate:'',range:'All',from:'',to:''});
 
@@ -219,7 +219,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
             <div className="mt-4 space-y-2">
               {centerRanks.length===0?<div className="text-sm text-slate-500">No coaching activity loaded yet.</div>:centerRanks.map((r,i)=><div key={`${r.rank}-${i}`} className={`rounded-xl border p-3 ${r.isOwn?'border-sky-300 bg-sky-50':'bg-white/70'}`}>
                 <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3"><span className="text-xl">{medal(r.rank)}</span><div><div className="font-bold">{r.name}{r.isOwn?' · Your Center':''}</div><div className="text-xs text-slate-500">{r.isOwn||admin?'Coaching completion + speed':'Private center'}</div></div></div>
+                  <div className="flex items-center gap-3"><span className="text-xl">{medal(r.rank)}</span><div><div className="font-bold">{r.name}{r.isOwn?' · Your Center':''}{r.provisional?<span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">Provisional</span>:null}</div><div className="text-xs text-slate-500">{r.isOwn||admin?'Coaching completion + speed':'Private center'}</div></div></div>
                   <div className="text-right">{r.coachingScore===null?<div className="text-sm font-semibold text-slate-400">Numbers private</div>:<><div className="text-xl font-bold text-sky-800">{r.coachingScore.toFixed(1)}</div><div className="text-xs text-slate-500">activity score</div></>}</div>
                 </div>
                 {r.coachingScore!==null&&<div className="mt-3 grid grid-cols-2 gap-2 text-xs">
@@ -228,6 +228,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
                 </div>}
               </div>)}
             </div>
+            <div className="mt-3 text-[10px] leading-4 text-slate-400">Ranking uses the last 30 days: 70% coaching completion + 30% completed within 2 business days. Small samples are lightly adjusted; under 30 reviews is Provisional.</div>
           </section>
 
           <section className="glass rounded-2xl p-5">
