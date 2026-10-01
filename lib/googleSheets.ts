@@ -74,16 +74,36 @@ async function readCenter(center: Center): Promise<Review[]> {
     throw new Error(`${center} is missing coaching columns: ${missing.join(', ')}`);
   }
 
-  const data = await api.spreadsheets.values.get({
-    spreadsheetId: id,
-    range: `'${center}'!${headerRow + 1}:10000`,
-    valueRenderOption: 'UNFORMATTED_VALUE',
-  });
+  const [data, formatting] = await Promise.all([
+    api.spreadsheets.values.get({
+      spreadsheetId: id,
+      range: `'${center}'!${headerRow + 1}:10000`,
+      valueRenderOption: 'UNFORMATTED_VALUE',
+    }),
+    api.spreadsheets.get({
+      spreadsheetId: id,
+      ranges: [`'${center}'!A${headerRow + 1}:A10000`],
+      includeGridData: true,
+      fields: 'sheets.data.rowData.values.effectiveFormat.backgroundColor',
+    }),
+  ]);
+
+  const formatRows = formatting.data.sheets?.[0]?.data?.[0]?.rowData ?? [];
+  const recoveredCoached = (idx:number) => {
+    const color = formatRows[idx]?.values?.[0]?.effectiveFormat?.backgroundColor;
+    if(!color) return false;
+    const red = Number(color.red ?? 1);
+    const green = Number(color.green ?? 1);
+    const blue = Number(color.blue ?? 1);
+    // Exact coaching highlight is a light-green whole-row fill. White rows and
+    // the orange dispute fill do not match this range.
+    return green >= 0.93 && red >= 0.80 && red < 0.95 && blue >= 0.80 && blue < 0.95;
+  };
 
   return (data.data.values ?? [])
     .map((r, idx) => {
       const g = (h: string) => r[col(h)];
-      const coached = truthy(g('Coached?'));
+      const coached = truthy(g('Coached?')) || recoveredCoached(idx);
       const qaDate = excelishDate(g('Date'));
 
       return {
