@@ -32,6 +32,26 @@ function normalizeRows(headers:string[],rows:unknown[][]){
   return {rows:out,skipped};
 }
 
+type ImportJob={center:Center;headers:string[];rows:unknown[][]};
+
+async function runJobs(jobs:ImportJob[],concurrency=3){
+  let next=0;
+  let added=0,updated=0,skipped=0;
+  const workers=Array.from({length:Math.min(concurrency,jobs.length)},async()=>{
+    while(true){
+      const i=next++;
+      if(i>=jobs.length)return;
+      const job=jobs[i];
+      const result=await importCenterRows(job.center,job.headers,job.rows);
+      added+=Number(result.added||0);
+      updated+=Number(result.updated||0);
+      skipped+=Number(result.skipped||0);
+    }
+  });
+  await Promise.all(workers);
+  return {added,updated,skipped};
+}
+
 export async function POST(req:Request){
   const session=await getSession();
   if(!session||session.role!=='admin')return NextResponse.json({error:'Admin access required.'},{status:403});
@@ -42,7 +62,12 @@ export async function POST(req:Request){
     if(!/\.xlsx?$/i.test(file.name))return NextResponse.json({error:'Only .xlsx or .xls files are accepted.'},{status:400});
 
     const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true});
-    let added=0,updated=0,skipped=0;
+    let skipped=0;
+    const jobs:ImportJob[]=[];
+
+    // Larger chunks + limited parallelism keep Netlify from timing out while
+    // avoiding a flood of requests to the backing Daily-Findings database.
+    const BATCH=500;
 
     for(const center of centers){
       const ws=wb.Sheets[center];
@@ -53,14 +78,13 @@ export async function POST(req:Request){
       const headers=raw[hi].map(s);
       const normalized=normalizeRows(headers,raw.slice(hi+1));
       skipped+=normalized.skipped;
-      const BATCH=150;
       for(let i=0;i<normalized.rows.length;i+=BATCH){
-        const result=await importCenterRows(center,headers,normalized.rows.slice(i,i+BATCH));
-        added+=Number(result.added||0);
-        updated+=Number(result.updated||0);
-        skipped+=Number(result.skipped||0);
+        jobs.push({center,headers,rows:normalized.rows.slice(i,i+BATCH)});
       }
     }
+
+    const imported=await runJobs(jobs,3);
+    skipped+=imported.skipped;
 
     let scored=0;
     const scoreWs=wb.Sheets['Scores'];
@@ -70,7 +94,14 @@ export async function POST(req:Request){
       scored=Number(result.written||0);
     }
 
-    return NextResponse.json({added,updated,skipped,scored,source:'google-sheet'});
+    return NextResponse.json({
+      added:imported.added,
+      updated:imported.updated,
+      skipped,
+      scored,
+      chunks:jobs.length,
+      source:'google-sheet'
+    });
   }catch(e){
     console.error('import',e);
     return NextResponse.json({error:e instanceof Error?e.message:'Import failed.'},{status:500});
