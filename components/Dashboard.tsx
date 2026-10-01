@@ -297,6 +297,29 @@ export default function Dashboard({admin,center,userName,viewOnly=false,adminPre
       <div className="flex items-center gap-3"><img src="/images/qa-control-background.jpg" alt="QA Control" className="h-12 w-12 rounded-xl object-cover"/><div><div className="font-bold">QA Control</div><div className="text-xs text-slate-500">{viewOnly?`View Only · ${center}`:admin?'Super Admin':center}</div></div></div>
       {nav}
       <div className="mt-5"><WeatherCard/></div>
+      <div className="mt-4 rounded-2xl border bg-white/90 p-3 shadow-sm">
+        <div className="flex items-center justify-between gap-2">
+          <div className="font-bold">📈 Issue Trends</div>
+          <div className="flex rounded-lg border bg-white p-0.5">{([7,30,90] as const).map(days=><button key={days} onClick={()=>setTrendDays(days)} className={`focusable rounded-md px-2 py-1 text-[10px] font-bold ${trendDays===days?'bg-sky-700 text-white':'text-slate-500 hover:bg-slate-50'}`}>{days}d</button>)}</div>
+        </div>
+        <div className="mt-1 text-[10px] text-slate-500">{issueTrend.scope} · {issueTrend.currentTotal} reviews</div>
+        <div className="mt-3">
+          <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Top QA issues</div>
+          <div className="mt-1.5 space-y-1.5">
+            {issueTrend.categories.length===0?<div className="text-[11px] text-slate-400">No scored issues yet.</div>:issueTrend.categories.slice(0,4).map((x,i)=><div key={x.name} className="rounded-lg bg-slate-50 px-2 py-1.5">
+              <div className="flex items-center justify-between gap-2 text-[11px]"><span className="truncate font-semibold">{i+1}. {x.name}</span><span className={`shrink-0 font-bold ${x.delta>0.05?'text-red-700':x.delta<-0.05?'text-green-700':'text-slate-500'}`}>{x.delta>0.05?'↑':x.delta<-0.05?'↓':'—'} {Math.abs(x.delta).toFixed(1)}</span></div>
+              <div className="text-[9px] text-slate-500">{x.count} affected · {x.rate.toFixed(1)}%</div>
+            </div>)}
+          </div>
+        </div>
+        <div className="mt-3">
+          <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Recurring reasons</div>
+          <div className="mt-1.5 space-y-1">
+            {issueTrend.reasons.length===0?<div className="text-[11px] text-slate-400">No reason matches yet.</div>:issueTrend.reasons.slice(0,3).map(x=><div key={x.name} className="flex items-center justify-between gap-2 text-[10px]"><span className="truncate">{x.name}</span><span className="shrink-0 font-bold">{x.count}</span></div>)}
+          </div>
+        </div>
+        <div className="mt-3 text-[9px] leading-3 text-slate-400">From QA score markdowns + fixed rules. No AI. Arrows compare with the previous equal period.</div>
+      </div>
     </aside>
     <main className="w-full p-4 pt-20 md:ml-64 md:p-8">
       <div className="mx-auto max-w-7xl">
@@ -356,23 +379,7 @@ export default function Dashboard({admin,center,userName,viewOnly=false,adminPre
           </section>
         </div>
 
-        <section className="glass mt-5 rounded-2xl p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><h2 className="font-bold">📈 QA Issue Trends</h2><p className="text-sm text-slate-500">{issueTrend.scope} · {issueTrend.currentTotal} review{issueTrend.currentTotal===1?'':'s'} in the current period</p></div>
-            <div className="flex rounded-xl border bg-white p-1">{([7,30,90] as const).map(days=><button key={days} onClick={()=>setTrendDays(days)} className={`focusable rounded-lg px-3 py-1.5 text-xs font-bold ${trendDays===days?'bg-sky-700 text-white':'text-slate-600 hover:bg-slate-50'}`}>{days}d</button>)}</div>
-          </div>
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border bg-white/70 p-4">
-              <div className="font-bold">Most common QA score issues</div>
-              <div className="mt-3 space-y-2">{issueTrend.categories.length===0?<div className="text-sm text-slate-500">No scored issue categories found for this period.</div>:issueTrend.categories.map((x,i)=><div key={x.name} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 p-2 text-sm"><div><b>{i+1}. {x.name}</b><div className="text-xs text-slate-500">{x.count} affected · {x.rate.toFixed(1)}% of reviews</div></div><div className={`text-xs font-bold ${x.delta>0.05?'text-red-700':x.delta<-0.05?'text-green-700':'text-slate-500'}`}>{x.delta>0.05?'↑':x.delta<-0.05?'↓':'—'} {Math.abs(x.delta).toFixed(1)} pts</div></div>)}</div>
-            </div>
-            <div className="rounded-xl border bg-white/70 p-4">
-              <div className="font-bold">Recurring issue reasons</div>
-              <div className="mt-3 space-y-2">{issueTrend.reasons.length===0?<div className="text-sm text-slate-500">No predefined issue reasons matched the Markdowns field for this period.</div>:issueTrend.reasons.map((x,i)=><div key={x.name} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 p-2 text-sm"><div><b>{i+1}. {x.name}</b><div className="text-xs text-slate-500">{x.count} affected · {x.rate.toFixed(1)}% of reviews</div></div><div className={`text-xs font-bold ${x.delta>0.05?'text-red-700':x.delta<-0.05?'text-green-700':'text-slate-500'}`}>{x.delta>0.05?'↑':x.delta<-0.05?'↓':'—'} {Math.abs(x.delta).toFixed(1)} pts</div></div>)}</div>
-            </div>
-          </div>
-          <div className="mt-3 text-[10px] leading-4 text-slate-400">How it works: trends come directly from QA score markdowns and predefined issue rules. No AI is used. Arrows compare issue rate with the previous equal period, so changing review volume does not distort the trend.</div>
-        </section>
+
 
         {admin&&<div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{CENTERS.map(c=>{const rows=reviews.filter(r=>r.center===c),done=rows.filter(r=>r.coached).length,late=rows.filter(r=>r.status==='Overdue').length,centerPct=rows.length?Math.round(done/rows.length*100):0;return <button key={c} onClick={()=>patch('center',c)} className="glass focusable rounded-2xl p-4 text-left"><div className="font-bold">{c}</div><div className="mt-2 text-sm text-slate-600">{rows.length} Reviews · {rows.length-done} Pending · {late} Overdue</div><div className="mt-2 text-xl font-bold">{centerPct}% Complete</div></button>})}</div>}
 
