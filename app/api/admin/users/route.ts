@@ -7,7 +7,7 @@ const centers:Center[]=['Buwelo','WNS','Concentrix','Telus'];
 
 type EnvUser={id:string;name:string;email:string;password:string;role:'admin'|'center';center:Center|''};
 function envUsers():EnvUser[]{
-  return [
+  const rows:EnvUser[]=[
     {id:'env:valdemir',name:'Valdemir Gonçalves',email:process.env.ADMIN_VALDEMIR_EMAIL||'',password:process.env.ADMIN_VALDEMIR_PASSWORD||'',role:'admin',center:''},
     {id:'env:barbara',name:'Barbara Kalchik',email:process.env.ADMIN_BARBARA_EMAIL||'',password:process.env.ADMIN_BARBARA_PASSWORD||'',role:'admin',center:''},
     {id:'env:april',name:'April Grantham',email:process.env.ADMIN_APRIL_EMAIL||'',password:process.env.ADMIN_APRIL_PASSWORD||'',role:'admin',center:''},
@@ -15,7 +15,8 @@ function envUsers():EnvUser[]{
     {id:'env:wns',name:'WNS',email:process.env.WNS_EMAIL||'',password:process.env.WNS_PASSWORD||'',role:'center',center:'WNS'},
     {id:'env:concentrix',name:'Concentrix',email:process.env.CONCENTRIX_EMAIL||'',password:process.env.CONCENTRIX_PASSWORD||'',role:'center',center:'Concentrix'},
     {id:'env:telus',name:'Telus',email:process.env.TELUS_EMAIL||'',password:process.env.TELUS_PASSWORD||'',role:'center',center:'Telus'},
-  ].filter(x=>x.email&&x.password);
+  ];
+  return rows.filter(x=>Boolean(x.email&&x.password));
 }
 function envById(id:string){return envUsers().find(x=>x.id===id)}
 function envByEmail(email:string){const n=email.trim().toLowerCase();return envUsers().find(x=>x.email.toLowerCase()===n)}
