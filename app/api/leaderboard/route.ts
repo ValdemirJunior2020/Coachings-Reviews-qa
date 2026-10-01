@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/firebaseAdmin';
+import { getReviews as getSheetReviews } from '@/lib/googleSheets';
 import type { Center } from '@/lib/types';
 
 const centers:Center[]=['Buwelo','Concentrix','WNS','Telus'];
@@ -41,9 +42,24 @@ export async function GET(req:Request){
   const effectiveRole: 'admin'|'center' = previewCenter?'center':session.role;
   const effectiveCenter=previewCenter||session.center;
 
-  const snap=await db().collection('reviews')
-    .select('center','agent','finalScore','coached','qaDate','dateCoached')
-    .get();
+  let sourceRows:Array<Record<string,unknown>>=[];
+  try{
+    const snap=await db().collection('reviews')
+      .select('center','agent','finalScore','coached','qaDate','dateCoached')
+      .get();
+    sourceRows=snap.docs.map(doc=>doc.data() as Record<string,unknown>);
+  }catch(firebaseError){
+    console.error('leaderboard firebase failed; using Google Sheet fallback',firebaseError);
+    const sheetReviews=await getSheetReviews();
+    sourceRows=sheetReviews.map(r=>({
+      center:r.center,
+      agent:r.agent,
+      finalScore:r.finalScore,
+      coached:r.coached,
+      qaDate:r.qaDate,
+      dateCoached:r.dateCoached,
+    }));
+  }
 
   const now=new Date();
   now.setHours(12,0,0,0);
@@ -57,8 +73,7 @@ export async function GET(req:Request){
     centerBuckets.set(center,{total:0,coached:0,onTime:0,speedDays:0,speedCount:0});
   }
 
-  for(const doc of snap.docs){
-    const d=doc.data();
+  for(const d of sourceRows){
     const center=d.center as Center;
     if(!centers.includes(center))continue;
 

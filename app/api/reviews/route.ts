@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/firebaseAdmin';
-import { getReviews } from '@/lib/reviews';
+import { getReviews as getFirebaseReviews } from '@/lib/reviews';
+import { getReviews as getSheetReviews } from '@/lib/googleSheets';
 import type { Center } from '@/lib/types';
 
 const map:Record<string,Center>={buwelo:'Buwelo',wns:'WNS',concentrix:'Concentrix',telus:'Telus'};
@@ -48,8 +49,14 @@ export async function GET(req:Request){
     let center:Center|undefined;
     if(s.role==='center') center=s.center;
     else if(q) center=map[q.toLowerCase()];
-    return NextResponse.json({reviews:await getReviews(center)});
-  }catch(e){console.error('reviews',e);return NextResponse.json({error:'Unable to load coaching reviews from Firebase.'},{status:503})}
+    try{
+      return NextResponse.json({reviews:await getFirebaseReviews(center),source:'firebase'});
+    }catch(firebaseError){
+      console.error('reviews firebase failed; using Google Sheet fallback',firebaseError);
+      const reviews=await getSheetReviews(center);
+      return NextResponse.json({reviews,source:'google-sheets',warning:'Firebase unavailable; loaded coaching data from the Daily Findings Google Sheet.'});
+    }
+  }catch(e){console.error('reviews',e);return NextResponse.json({error:'Unable to load coaching reviews from Firebase or Google Sheets.'},{status:503})}
 }
 
 export async function POST(req:Request){
