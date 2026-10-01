@@ -2,6 +2,7 @@
 
 import {useEffect,useState} from 'react';
 import type {Center} from '@/lib/types';
+import TinyLoader from '@/components/TinyLoader';
 
 type LoginUser={
   id:string;
@@ -20,6 +21,7 @@ export default function AdminSettings({userName}:{userName:string}){
   const [flash,setFlash]=useState('');
   const [editing,setEditing]=useState<LoginUser|null>(null);
   const [adding,setAdding]=useState(false);
+  const [action,setAction]=useState('');
 
   async function load(){
     setLoading(true);
@@ -34,7 +36,8 @@ export default function AdminSettings({userName}:{userName:string}){
   useEffect(()=>{load()},[]);
 
   async function save(e:React.FormEvent<HTMLFormElement>){
-    e.preventDefault();
+    e.preventDefault();if(action)return;
+    setAction('save');setFlash('');
     const f=new FormData(e.currentTarget);
     const payload={
       id:editing?.id,
@@ -46,29 +49,50 @@ export default function AdminSettings({userName}:{userName:string}){
       active:f.get('active')==='on',
     };
     const method=editing?'PATCH':'POST';
-    const res=await fetch('/api/admin/users',{method,headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
-    const text=await res.text();let d:any={};try{d=text?JSON.parse(text):{}}catch{d={error:`Server returned HTTP ${res.status}.`}}
-    if(!res.ok){setFlash(d.error||'Unable to save login.');return}
-    setFlash(editing?'✓ Login updated.':'✓ Login added.');
-    setEditing(null);setAdding(false);
-    await load();
+    try{
+      const res=await fetch('/api/admin/users',{method,headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+      const text=await res.text();let d:any={};try{d=text?JSON.parse(text):{}}catch{d={error:`Server returned HTTP ${res.status}.`}}
+      if(!res.ok){setFlash(d.error||'Unable to save login.');return}
+      setFlash(editing?'✓ Login updated.':'✓ Login added.');
+      setEditing(null);setAdding(false);
+      await load();
+    }catch(e){setFlash(e instanceof Error?e.message:'Unable to save login.')}
+    finally{setAction('')}
   }
 
   async function toggle(user:LoginUser){
-    const res=await fetch('/api/admin/users',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({...user,active:!user.active,password:''})});
-    const text=await res.text();let d:any={};try{d=text?JSON.parse(text):{}}catch{d={error:`Server returned HTTP ${res.status}.`}}
-    if(!res.ok){setFlash(d.error||'Unable to update login.');return}
-    setFlash(user.active?'Login disabled.':'Login enabled.');
-    await load();
+    if(action)return;setAction(`toggle:${user.id}`);setFlash('');
+    try{
+      const res=await fetch('/api/admin/users',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({...user,active:!user.active,password:''})});
+      const text=await res.text();let d:any={};try{d=text?JSON.parse(text):{}}catch{d={error:`Server returned HTTP ${res.status}.`}}
+      if(!res.ok){setFlash(d.error||'Unable to update login.');return}
+      setFlash(user.active?'Login disabled.':'Login enabled.');
+      await load();
+    }catch(e){setFlash(e instanceof Error?e.message:'Unable to update login.')}
+    finally{setAction('')}
   }
 
   async function deleteUser(user:LoginUser){
+    if(action)return;
     if(!confirm(`Permanently delete login for ${user.name} (${user.email})? This cannot be undone.`))return;
-    const res=await fetch('/api/admin/users',{method:'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({id:user.id})});
-    const text=await res.text();let d:any={};try{d=text?JSON.parse(text):{}}catch{d={error:`Server returned HTTP ${res.status}.`}}
-    if(!res.ok){setFlash(d.error||'Unable to delete login.');return}
-    setFlash('✓ Login permanently deleted.');
-    await load();
+    setAction(`delete:${user.id}`);setFlash('');
+    try{
+      const res=await fetch('/api/admin/users',{method:'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({id:user.id})});
+      const text=await res.text();let d:any={};try{d=text?JSON.parse(text):{}}catch{d={error:`Server returned HTTP ${res.status}.`}}
+      if(!res.ok){setFlash(d.error||'Unable to delete login.');return}
+      setFlash('✓ Login permanently deleted.');
+      await load();
+    }catch(e){setFlash(e instanceof Error?e.message:'Unable to delete login.')}
+    finally{setAction('')}
+  }
+
+  async function logout(){
+    if(action)return;setAction('logout');
+    try{
+      const res=await fetch('/api/logout',{method:'POST'});
+      if(!res.ok)throw new Error('Unable to log out.');
+      location.href='/';
+    }catch(e){setFlash(e instanceof Error?e.message:'Unable to log out.');setAction('')}
   }
 
   const formUser=editing;
@@ -78,7 +102,7 @@ export default function AdminSettings({userName}:{userName:string}){
       <nav className="mt-8 grid gap-2 text-sm">
         <button onClick={()=>location.href='/admin'} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">← Dashboard / All Reviews</button>
         <div className="rounded-lg bg-sky-50 p-2 font-bold text-sky-800">⚙ Admin / Settings</div>
-        <button onClick={async()=>{await fetch('/api/logout',{method:'POST'});location.href='/'}} className="focusable rounded-lg p-2 text-left text-red-700 hover:bg-red-50">Logout</button>
+        <button onClick={logout} disabled={action==='logout'} className="focusable rounded-lg p-2 text-left text-red-700 hover:bg-red-50 disabled:opacity-50">{action==='logout'?<TinyLoader label="Logging out..." />:'Logout'}</button>
       </nav>
     </aside>
 
@@ -93,7 +117,7 @@ export default function AdminSettings({userName}:{userName:string}){
 
         <div className="glass mt-6 overflow-hidden rounded-2xl">
           <div className="border-b p-4"><h2 className="font-bold">Managed Logins</h2><p className="text-sm text-slate-500">Passwords are never displayed. Use Edit to set a new password.</p></div>
-          {loading?<div className="p-8 text-center">Loading logins...</div>:users.length===0?<div className="p-8 text-center text-slate-500">No managed logins yet. Existing environment logins still work until you add managed accounts.</div>:<div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead className="bg-slate-50 text-left"><tr><th className="p-3">Name</th><th className="p-3">Email / Login</th><th className="p-3">Access</th><th className="p-3">Status</th><th className="p-3">Actions</th></tr></thead><tbody>{users.map(u=><tr key={u.id} className="border-t"><td className="p-3 font-semibold">{u.name}</td><td className="p-3">{u.email}</td><td className="p-3">{u.role==='admin'?'Admin':u.center}</td><td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${u.active?'bg-green-100 text-green-800':'bg-slate-200 text-slate-600'}`}>{u.active?'Active':'Disabled'}</span></td><td className="p-3"><div className="flex gap-2"><button onClick={()=>{setEditing(u);setAdding(false)}} className="focusable rounded-lg border bg-white px-3 py-1.5">Edit</button><button onClick={()=>toggle(u)} className="focusable rounded-lg border bg-white px-3 py-1.5">{u.active?'Disable':'Enable'}</button><button onClick={()=>deleteUser(u)} className="focusable rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 font-semibold text-red-700">Delete</button></div></td></tr>)}</tbody></table></div>}
+          {loading?<div className="p-8 text-center"><TinyLoader label="Loading logins..." /></div>:users.length===0?<div className="p-8 text-center text-slate-500">No managed logins yet. Existing environment logins still work until you add managed accounts.</div>:<div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead className="bg-slate-50 text-left"><tr><th className="p-3">Name</th><th className="p-3">Email / Login</th><th className="p-3">Access</th><th className="p-3">Status</th><th className="p-3">Actions</th></tr></thead><tbody>{users.map(u=><tr key={u.id} className="border-t"><td className="p-3 font-semibold">{u.name}</td><td className="p-3">{u.email}</td><td className="p-3">{u.role==='admin'?'Admin':u.center}</td><td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${u.active?'bg-green-100 text-green-800':'bg-slate-200 text-slate-600'}`}>{u.active?'Active':'Disabled'}</span></td><td className="p-3"><div className="flex gap-2"><button onClick={()=>{setEditing(u);setAdding(false)}} className="focusable rounded-lg border bg-white px-3 py-1.5">Edit</button><button onClick={()=>toggle(u)} disabled={Boolean(action)} className="focusable rounded-lg border bg-white px-3 py-1.5 disabled:opacity-50">{action===`toggle:${u.id}`?<TinyLoader label={u.active?'Disabling...':'Enabling...'} />:(u.active?'Disable':'Enable')}</button><button onClick={()=>deleteUser(u)} disabled={Boolean(action)} className="focusable rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 font-semibold text-red-700 disabled:opacity-50">{action===`delete:${u.id}`?<TinyLoader label="Deleting..." />:'Delete'}</button></div></td></tr>)}</tbody></table></div>}
         </div>
 
         {(adding||editing)&&<div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/40 p-4"><form onSubmit={save} className="glass w-full max-w-lg rounded-3xl p-6">
@@ -105,7 +129,7 @@ export default function AdminSettings({userName}:{userName:string}){
           <label className="mt-4 block font-semibold">Call Center<select name="center" defaultValue={formUser?.center||'Buwelo'} disabled={formUser?.role==='admin'} className="focusable mt-1 w-full rounded-xl border p-3">{CENTERS.map(c=><option key={c}>{c}</option>)}</select></label>
           <label className="mt-4 block font-semibold">{editing?'New Password (optional)':'Password'}<input name="password" type="password" required={!editing} minLength={8} autoComplete="new-password" className="focusable mt-1 w-full rounded-xl border p-3" placeholder={editing?'Leave blank to keep current password':'Minimum 8 characters'}/></label>
           <label className="mt-4 flex items-center gap-2 font-semibold"><input name="active" type="checkbox" defaultChecked={formUser?.active??true}/> Active login</label>
-          <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={()=>{setEditing(null);setAdding(false)}} className="focusable rounded-xl border bg-white px-4 py-2">Cancel</button><button className="focusable rounded-xl bg-sky-700 px-4 py-2 font-bold text-white">Save Login</button></div>
+          <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={()=>{setEditing(null);setAdding(false)}} className="focusable rounded-xl border bg-white px-4 py-2">Cancel</button><button disabled={action==='save'} className="focusable rounded-xl bg-sky-700 px-4 py-2 font-bold text-white disabled:opacity-50">{action==='save'?<TinyLoader label="Saving..." />:'Save Login'}</button></div>
         </form></div>}
       </div>
     </main>
