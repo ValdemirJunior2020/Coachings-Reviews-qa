@@ -176,7 +176,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
         while(!done){
           setFlash(`Uploading Daily Findings — ${section}...`);
           const body=new FormData();body.append('file',file);
-          const res=await fetch(`/api/import?section=${encodeURIComponent(section)}&offset=${offset}&limit=150`,{method:'POST',body});
+          const res=await fetch(`/api/import?section=${encodeURIComponent(section)}&offset=${offset}&limit=40`,{method:'POST',body});
           const contentType=res.headers.get('content-type')||'';
           if(!contentType.includes('application/json'))throw new Error(`${section} upload failed on the server (HTTP ${res.status}).`);
           const d=await res.json();
