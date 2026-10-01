@@ -190,7 +190,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
         }
       }
 
-      setFlash(`✓ Upload complete — ${added} new · ${updated} updated · ${skipped} skipped · ${scored} scores.`);
+      setFlash(`✓ Upload complete — ${added+updated} reviews processed · ${skipped} skipped · ${scored} scores.`);
       await load();
       try{const lr=await fetch('/api/leaderboard',{cache:'no-store'});const ld=await lr.json();if(lr.ok){setCenterRanks(ld.centerRanks||[]);setAgentRanks(ld.agentRanks||[]);setLeaderboardKpi(Number(ld.kpi)||90)}}catch{}
     }catch(e){
