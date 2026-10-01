@@ -13,7 +13,7 @@ const emptyFilters=(center?:Center):ReviewFilters=>({search:'',center:center||'A
 function Stat({label,value}:{label:string;value:string|number}){return <div className="glass rounded-2xl p-4"><div className="text-sm text-slate-500">{label}</div><div className="mt-1 text-2xl font-bold">{value}</div></div>}
 function Info({label,value}:{label:string;value:string}){return <div><div className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</div><div className="mt-1 text-sm leading-6">{value||'—'}</div></div>}
 
-export default function Dashboard({admin,center,userName}:{admin:boolean;center?:Center;userName:string}){
+export default function Dashboard({admin,center,userName,viewOnly=false,adminPreview=false}:{admin:boolean;center?:Center;userName:string;viewOnly?:boolean;adminPreview?:boolean}){
   const [reviews,setReviews]=useState<Review[]>([]);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
@@ -34,7 +34,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
 
   async function load(){
     setLoading(true);setError('');
-    try{const res=await fetch('/api/reviews',{cache:'no-store'});const d=await res.json();if(!res.ok)throw new Error(d.error);setReviews(d.reviews)}
+    try{const url=adminPreview&&center?`/api/reviews?center=${encodeURIComponent(center)}`:'/api/reviews';const res=await fetch(url,{cache:'no-store'});const d=await res.json();if(!res.ok)throw new Error(d.error);setReviews(d.reviews)}
     catch(e){setError(e instanceof Error?e.message:'Unable to load reviews.')}
     finally{setLoading(false)}
   }
@@ -42,7 +42,8 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
   useEffect(()=>{
     const loadLeaderboard=async()=>{
       try{
-        const res=await fetch('/api/leaderboard',{cache:'no-store'});
+        const url=adminPreview&&center?`/api/leaderboard?previewCenter=${encodeURIComponent(center)}`:'/api/leaderboard';
+        const res=await fetch(url,{cache:'no-store'});
         const d=await res.json();
         if(res.ok){
           setCenterRanks(d.centerRanks||[]);
@@ -222,13 +223,15 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
   async function logout(){try{await fetch('/api/presence',{method:'DELETE',keepalive:true})}catch{}await fetch('/api/logout',{method:'POST'});location.href='/'}
 
   const nav=<nav className="mt-8 grid gap-2 text-sm">
+    {viewOnly&&<><div className="rounded-xl border border-purple-200 bg-purple-100 p-3 text-purple-900"><div className="text-xs font-bold uppercase">Call-Center-View-Mode</div><select value={center} onChange={e=>location.href='/admin/call-center-view?center='+encodeURIComponent(e.target.value)} className="mt-2 w-full rounded-lg border border-purple-200 bg-white p-2 font-semibold text-slate-800">{CENTERS.map(c=><option key={c}>{c}</option>)}</select></div><button onClick={()=>location.href='/admin'} className="focusable rounded-lg bg-purple-100 p-2 text-left font-bold text-purple-800 hover:bg-purple-200">← Exit View Mode</button></>}
     <button onClick={()=>{setViewMode('cards');chooseStatus('All')}} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">Dashboard / All Reviews</button>
     <button onClick={()=>{setViewMode('sheet');chooseStatus('All')}} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">📊 Daily Findings Sheet</button>
     <button onClick={()=>chooseStatus('Pending')} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">Pending Coaching</button>
     <button onClick={()=>chooseStatus('Overdue')} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">Overdue</button>
     <button onClick={()=>chooseStatus('Completed')} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">Completed Coaching</button>
     <button onClick={()=>{setDisputedOnly(true);patch('status','All');setViewMode('cards');setMenuOpen(false)}} className="focusable rounded-lg p-2 text-left hover:bg-orange-50">🟠 TL Disputed{admin?` (${disputed})`:''}</button>
-    {admin&&<button onClick={()=>location.href='/admin/settings'} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">⚙ Admin / Settings</button>}
+    {admin&&<button onClick={()=>location.href='/admin/call-center-view'} className="focusable rounded-xl border border-purple-200 bg-purple-100 p-2 text-left font-bold text-purple-800 hover:bg-purple-200">👁 Call-Center-View-Mode</button>}
+    {admin&&<button onClick={()=>location.href='/admin/settings'} className="focusable rounded-xl bg-green-100 p-2 text-left font-bold text-green-800 hover:bg-green-200">⚙ Admin / Settings</button>}
     <button onClick={logout} className="focusable rounded-lg p-2 text-left text-red-700 hover:bg-red-50">Logout</button>
   </nav>;
 
@@ -236,12 +239,13 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     <button onClick={()=>setMenuOpen(true)} className="focusable fixed left-4 top-4 z-40 rounded-xl bg-white/95 px-3 py-2 shadow md:hidden" aria-label="Open navigation">☰ Menu</button>
     {menuOpen&&<button className="fixed inset-0 z-40 bg-slate-900/35 md:hidden" aria-label="Close navigation" onClick={()=>setMenuOpen(false)}/>}
     <aside className={`glass fixed inset-y-0 left-0 z-50 w-64 p-5 transition-transform md:translate-x-0 ${menuOpen?'translate-x-0':'-translate-x-full'} md:block`}>
-      <div className="flex items-center gap-3"><img src="/images/qa-control-background.jpg" alt="QA Control" className="h-12 w-12 rounded-xl object-cover"/><div><div className="font-bold">QA Control</div><div className="text-xs text-slate-500">{admin?'Super Admin':center}</div></div></div>
+      <div className="flex items-center gap-3"><img src="/images/qa-control-background.jpg" alt="QA Control" className="h-12 w-12 rounded-xl object-cover"/><div><div className="font-bold">QA Control</div><div className="text-xs text-slate-500">{viewOnly?`View Only · ${center}`:admin?'Super Admin':center}</div></div></div>
       {nav}
     </aside>
     <main className="w-full p-4 pt-20 md:ml-64 md:p-8">
       <div className="mx-auto max-w-7xl">
         <div className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-3xl font-bold">QA Coaching Daily Feedbacks</h1><p className="text-slate-500">Quality Assurance Coaching Follow-Up · {userName}</p></div><div className="flex flex-wrap gap-2">{admin&&<><button onClick={()=>setReviewEditor('new')} className="focusable rounded-xl border border-sky-200 bg-sky-50 px-4 py-2 font-bold text-sky-800">＋ Add Review</button><label className="focusable cursor-pointer rounded-xl bg-sky-700 px-4 py-2 font-bold text-white">📤 Upload Daily Findings<input type="file" accept=".xlsx,.xls" className="hidden" onChange={e=>{const file=e.target.files?.[0];if(file)uploadDaily(file);e.currentTarget.value=''}}/></label></>}<button onClick={downloadReviews} className="focusable rounded-xl border bg-white px-4 py-2">⬇ Download {admin?(filters.center==='All'?'All Centers':filters.center):center}</button><button onClick={load} className="focusable rounded-xl border bg-white px-4 py-2">Refresh</button></div></div>
+        {viewOnly&&<div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-purple-200 bg-purple-100 p-4 text-purple-900"><div><div className="font-bold">👁 Call-Center-View-Mode · {center}</div><div className="text-xs">This is a read-only preview of exactly what this call center can see.</div></div><div className="flex gap-2"><select value={center} onChange={e=>location.href='/admin/call-center-view?center='+encodeURIComponent(e.target.value)} className="rounded-xl border border-purple-200 bg-white px-3 py-2 font-semibold text-slate-800">{CENTERS.map(c=><option key={c}>{c}</option>)}</select><button onClick={()=>location.href='/admin'} className="rounded-xl bg-white px-3 py-2 font-bold text-purple-800">Exit</button></div></div>}
         {flash&&<div className="mt-4 rounded-xl bg-sky-50 p-3 text-sky-800">{flash}</div>}
         {error&&<div role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-red-700">{error}</div>}
         {!loading&&!error&&<div className={`mt-5 rounded-2xl p-4 font-semibold ${overdue?'bg-red-50 text-red-800':pending?'bg-amber-50 text-amber-800':'bg-green-50 text-green-800'}`}>{overdue?`🔴 Overdue Coaching — ${overdue} review${overdue===1?'':'s'} pending for more than 2 business days.`:pending?`⚠ Coaching Reminder — ${pending} QA review${pending===1?' is':'s are'} still waiting for coaching confirmation.`:'✅ All Coaching Completed — There are no pending coaching reviews in this view.'}</div>}
@@ -364,7 +368,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
             <div className="mt-3"><div className="text-xs font-bold uppercase tracking-wide text-slate-500">Quick Coaching</div><p className="mt-1 line-clamp-3 text-sm leading-5 text-slate-700">{r.quickCoaching||'No coaching note.'}</p></div>
             <div className="mt-3 text-xs font-semibold text-sky-700">Open full review →</div>
           </button>
-          <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">{r.coached?<><button onClick={()=>setModal(r)} className="focusable flex-1 rounded-xl border bg-white px-3 py-2 text-sm font-semibold">Edit Coaching</button>{admin&&<button onClick={()=>reopen(r)} className="focusable rounded-xl border border-red-200 bg-white px-3 py-2 text-sm text-red-700">Reopen</button>}</>:<button onClick={()=>setModal(r)} className="focusable flex-1 rounded-xl bg-sky-700 px-3 py-2 text-sm font-bold text-white">Mark as Coached</button>}{!admin&&!r.tlDisputed&&<button onClick={()=>setDisputeModal(r)} className="focusable rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-sm font-bold text-orange-800">Dispute QA Review</button>}{!admin&&r.tlDisputed&&<span className="w-full rounded-xl bg-orange-50 px-3 py-2 text-center text-sm font-bold text-orange-800">🟠 Dispute sent to QA Admin</span>}</div>
+          {!viewOnly&&<div className="mt-4 flex flex-wrap gap-2 border-t pt-3">{r.coached?<><button onClick={()=>setModal(r)} className="focusable flex-1 rounded-xl border bg-white px-3 py-2 text-sm font-semibold">Edit Coaching</button>{admin&&<button onClick={()=>reopen(r)} className="focusable rounded-xl border border-red-200 bg-white px-3 py-2 text-sm text-red-700">Reopen</button>}</>:<button onClick={()=>setModal(r)} className="focusable flex-1 rounded-xl bg-sky-700 px-3 py-2 text-sm font-bold text-white">Mark as Coached</button>}{!admin&&!r.tlDisputed&&<button onClick={()=>setDisputeModal(r)} className="focusable rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-sm font-bold text-orange-800">Dispute QA Review</button>}{!admin&&r.tlDisputed&&<span className="w-full rounded-xl bg-orange-50 px-3 py-2 text-center text-sm font-bold text-orange-800">🟠 Dispute sent to QA Admin</span>}</div>}
         </article>)}</div>}</div>}
       </div>
     </main>
@@ -374,11 +378,11 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
       <div className="mt-5 grid gap-4 md:grid-cols-2"><Info label="Date" value={detail.qaDate}/><Info label="Date-of-the-call" value={detail.callDate}/><Info label="What guest needed?" value={detail.guestNeeded}/><Info label="What happened?" value={detail.happened}/><Info label="The Correct Matrix Process" value={detail.matrixProcess}/><Info label="Business impact" value={detail.businessImpact}/><div className="md:col-span-2"><Info label="Quick Coaching" value={detail.quickCoaching}/></div></div>
       <div className="mt-5 rounded-xl bg-white/70 p-3 text-sm text-slate-600">Call Lenght: {detail.callLength||'—'} · Call Month: {detail.callMonth||'—'} · Status: <b>{detail.status}</b></div>
       {detail.tlDisputed&&<div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 p-4"><div className="font-bold text-orange-800">🟠 TL Disputed</div><div className="mt-1 text-sm"><b>Submitted by:</b> {detail.disputeBy||'—'} · {detail.disputeDate||'—'}</div><div className="mt-2 text-sm"><b>Reason:</b> {detail.disputeReason||'—'}</div></div>}
-      <div className="mt-5 flex flex-wrap justify-end gap-2">
+      {!viewOnly&&<div className="mt-5 flex flex-wrap justify-end gap-2">
         {admin&&<><button onClick={()=>setReviewEditor(detail)} className="focusable rounded-xl border bg-white px-4 py-2 font-semibold">Edit Review</button><button onClick={()=>deleteReviewAdmin(detail)} className="focusable rounded-xl border border-red-200 bg-red-50 px-4 py-2 font-bold text-red-700">Delete Review</button></>}
         {!admin&&!detail.tlDisputed&&<button onClick={()=>{setDetail(null);setDisputeModal(detail)}} className="focusable rounded-xl border border-orange-300 bg-orange-50 px-4 py-2 font-bold text-orange-800">Dispute QA Review</button>}
         <button onClick={()=>{setDetail(null);setModal(detail)}} className="focusable rounded-xl bg-sky-700 px-4 py-2 font-bold text-white">{detail.coached?'Edit Coaching':'Mark as Coached'}</button>
-      </div>
+      </div>}
     </div></div>}
 
     {reviewEditor&&<div role="dialog" aria-modal="true" className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-900/45 p-4"><form onSubmit={saveReviewAdmin} className="glass max-h-[94vh] w-full max-w-4xl overflow-y-auto rounded-3xl p-6">
