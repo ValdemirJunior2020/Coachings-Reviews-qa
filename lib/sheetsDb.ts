@@ -81,3 +81,14 @@ export async function importCenterRows(center:Center,headers:string[],rows:unkno
 export async function replaceScores(rows:unknown[][]){
   return databaseRequest<{written:number}>('replaceScores',{rows});
 }
+
+
+export async function presencePing(payload:Record<string,unknown>){
+  return databaseRequest<{ok:boolean}>('presencePing',payload);
+}
+export async function presenceList(){
+  return databaseRequest<{users:Array<Record<string,unknown>>}>('presenceList');
+}
+export async function presenceDelete(email:string){
+  return databaseRequest<{ok:boolean}>('presenceDelete',{email});
+}
