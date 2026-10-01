@@ -31,7 +31,6 @@ export default function Dashboard({admin,center,userName,viewOnly=false,adminPre
   const [centerRanks,setCenterRanks]=useState<CenterRank[]>([]);
   const [agentRanks,setAgentRanks]=useState<AgentRank[]>([]);
   const [leaderboardKpi,setLeaderboardKpi]=useState(90);
-  const [trendDays,setTrendDays]=useState<7|30|90>(30);
   const [reviewEditor,setReviewEditor]=useState<Review|'new'|null>(null);
 
   async function load(){
@@ -112,60 +111,8 @@ export default function Dashboard({admin,center,userName,viewOnly=false,adminPre
     const rows=selected?agentRanks.filter(a=>a.center===selected):agentRanks;
     return [...rows].sort((a,b)=>b.avg-a.avg||b.count-a.count||a.name.localeCompare(b.name)).slice(0,12).map((a,i)=>({...a,rank:i+1}));
   },[agentRanks,admin,filters.center,center]);
-  const issueTrend=useMemo(()=>{
-    const now=new Date();
-    now.setHours(23,59,59,999);
-    const currentStart=new Date(now); currentStart.setDate(currentStart.getDate()-trendDays+1); currentStart.setHours(0,0,0,0);
-    const previousEnd=new Date(currentStart); previousEnd.setMilliseconds(-1);
-    const previousStart=new Date(currentStart); previousStart.setDate(previousStart.getDate()-trendDays);
-
-    const selectedCenter=admin&&filters.center!=='All'?filters.center:center;
-    const scoped=reviews.filter(r=>!selectedCenter||r.center===selectedCenter);
-    const inWindow=(r:Review,start:Date,end:Date)=>{
-      const d=new Date(r.qaDate);
-      return !Number.isNaN(d.getTime())&&d>=start&&d<=end;
-    };
-    const current=scoped.filter(r=>inWindow(r,currentStart,now));
-    const previous=scoped.filter(r=>inWindow(r,previousStart,previousEnd));
-
-    const categoryNames=['Readiness','Verification','Empathy','Matrix Compliance','Ownership','Efficiency','Documentation','Recap'];
-    const reasonRules=[
-      {label:'Refund',re:/\brefund\b/i},
-      {label:'Cancellation',re:/\bcancel(?:led|lation|ing)?\b/i},
-      {label:'Supplier confirmation / waiver',re:/supplier confirmation|confirmation number|written waiver|\bwaiver\b/i},
-      {label:'Date changes',re:/change(?:d|ing)? dates?|date change/i},
-      {label:'Voucher',re:/\bvoucher\b/i},
-      {label:'Callback / follow-up',re:/call\s?back|follow[ -]?up/i},
-      {label:'Documentation / notes',re:/document(?:ation|ed)?|\bnotes?\b/i},
-    ];
-
-    const build=(rows:Review[])=>{
-      const categories=new Map<string,number>();
-      const reasons=new Map<string,number>();
-      for(const r of rows){
-        for(const issue of r.scoreIssues||[])categories.set(issue,(categories.get(issue)||0)+1);
-        const text=r.scoreMarkdowns||'';
-        for(const rule of reasonRules)if(rule.re.test(text))reasons.set(rule.label,(reasons.get(rule.label)||0)+1);
-      }
-      return {categories,reasons,total:rows.length};
-    };
-    const cur=build(current), prev=build(previous);
-    const rowsFor=(names:string[],kind:'categories'|'reasons')=>names.map(name=>{
-      const count=cur[kind].get(name)||0;
-      const prevCount=prev[kind].get(name)||0;
-      const rate=cur.total?count/cur.total*100:0;
-      const prevRate=prev.total?prevCount/prev.total*100:0;
-      return {name,count,rate,delta:rate-prevRate};
-    }).filter(x=>x.count>0).sort((a,b)=>b.count-a.count||b.rate-a.rate).slice(0,8);
-    return {
-      currentTotal:cur.total,
-      previousTotal:prev.total,
-      categories:rowsFor(categoryNames,'categories'),
-      reasons:rowsFor(reasonRules.map(r=>r.label),'reasons'),
-      scope:selectedCenter||'All Centers'
-    };
-  },[reviews,trendDays,admin,filters.center,center]);
   const medal=(rank:number)=>rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':`🏅 ${rank}`;
+  const ordinal=(rank:number)=>rank===1?'1st':rank===2?'2nd':rank===3?'3rd':`${rank}th`;
 
   function patch<K extends keyof ReviewFilters>(key:K,value:ReviewFilters[K]){setFilters(f=>({...f,[key]:value}))}
   function chooseStatus(value:'All'|ReviewStatus){setDisputedOnly(false);patch('status',value);setMenuOpen(false)}
@@ -297,29 +244,7 @@ export default function Dashboard({admin,center,userName,viewOnly=false,adminPre
       <div className="flex items-center gap-3"><img src="/images/qa-control-background.jpg" alt="QA Control" className="h-12 w-12 rounded-xl object-cover"/><div><div className="font-bold">QA Control</div><div className="text-xs text-slate-500">{viewOnly?`View Only · ${center}`:admin?'Super Admin':center}</div></div></div>
       {nav}
       <div className="mt-5"><WeatherCard/></div>
-      <div className="mt-4 rounded-2xl border bg-white/90 p-3 shadow-sm">
-        <div className="flex items-center justify-between gap-2">
-          <div className="font-bold">📈 Issue Trends</div>
-          <div className="flex rounded-lg border bg-white p-0.5">{([7,30,90] as const).map(days=><button key={days} onClick={()=>setTrendDays(days)} className={`focusable rounded-md px-2 py-1 text-[10px] font-bold ${trendDays===days?'bg-sky-700 text-white':'text-slate-500 hover:bg-slate-50'}`}>{days}d</button>)}</div>
-        </div>
-        <div className="mt-1 text-[10px] text-slate-500">{issueTrend.scope} · {issueTrend.currentTotal} reviews</div>
-        <div className="mt-3">
-          <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Top QA issues</div>
-          <div className="mt-1.5 space-y-1.5">
-            {issueTrend.categories.length===0?<div className="text-[11px] text-slate-400">No scored issues yet.</div>:issueTrend.categories.slice(0,4).map((x,i)=><div key={x.name} className="rounded-lg bg-slate-50 px-2 py-1.5">
-              <div className="flex items-center justify-between gap-2 text-[11px]"><span className="truncate font-semibold">{i+1}. {x.name}</span><span className={`shrink-0 font-bold ${x.delta>0.05?'text-red-700':x.delta<-0.05?'text-green-700':'text-slate-500'}`}>{x.delta>0.05?'↑':x.delta<-0.05?'↓':'—'} {Math.abs(x.delta).toFixed(1)}</span></div>
-              <div className="text-[9px] text-slate-500">{x.count} affected · {x.rate.toFixed(1)}%</div>
-            </div>)}
-          </div>
-        </div>
-        <div className="mt-3">
-          <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Recurring reasons</div>
-          <div className="mt-1.5 space-y-1">
-            {issueTrend.reasons.length===0?<div className="text-[11px] text-slate-400">No reason matches yet.</div>:issueTrend.reasons.slice(0,3).map(x=><div key={x.name} className="flex items-center justify-between gap-2 text-[10px]"><span className="truncate">{x.name}</span><span className="shrink-0 font-bold">{x.count}</span></div>)}
-          </div>
-        </div>
-        <div className="mt-3 text-[9px] leading-3 text-slate-400">From QA score markdowns + fixed rules. No AI. Arrows compare with the previous equal period.</div>
-      </div>
+
     </aside>
     <main className="w-full p-4 pt-20 md:ml-64 md:p-8">
       <div className="mx-auto max-w-7xl">
@@ -351,16 +276,25 @@ export default function Dashboard({admin,center,userName,viewOnly=false,adminPre
           <section className="glass rounded-2xl p-5">
             <div className="flex items-center justify-between gap-3"><div><h2 className="font-bold">🏆 Center Coaching Leaderboard</h2><p className="text-sm text-slate-500">70% reviews completed · 30% coached within 2 business days</p></div><span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-800">Coaching Activity</span></div>
             <div className="mt-4 space-y-2">
-              {centerRanks.length===0?<div className="text-sm text-slate-500">No coaching activity loaded yet.</div>:centerRanks.map((r,i)=><div key={`${r.rank}-${i}`} className={`rounded-xl border p-3 ${r.isOwn?'border-sky-300 bg-sky-50':'bg-white/70'}`}>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3"><span className="text-xl">{medal(r.rank)}</span><div><div className="font-bold">{r.name}{r.isOwn?' · Your Center':''}{r.provisional?<span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">Provisional</span>:null}</div><div className="text-xs text-slate-500">{r.isOwn||admin?'Coaching completion + speed':'Private center'}</div></div></div>
-                  <div className="text-right">{r.coachingScore===null?<div className="text-sm font-semibold text-slate-400">Numbers private</div>:<><div className="text-xl font-bold text-sky-800">{r.coachingScore.toFixed(1)}</div><div className="text-xs text-slate-500">activity score</div></>}</div>
+              {centerRanks.length===0?<div className="text-sm text-slate-500">No coaching activity loaded yet.</div>:centerRanks.map((r,i)=>{
+                const fullDetails=admin&&!viewOnly||r.isOwn;
+                return <div key={`${r.rank}-${i}`} className={`rounded-xl border p-3 ${r.isOwn?'border-sky-300 bg-sky-50':'bg-white/70'}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <span className="min-w-10 text-sm font-extrabold text-slate-700">{ordinal(r.rank)}</span>
+                      <div>
+                        <div className="font-bold">{fullDetails?r.name:'Other Center'}{r.isOwn?' · Your Center':''}{fullDetails&&r.provisional?<span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">Provisional</span>:null}</div>
+                        <div className="text-xs text-slate-500">{fullDetails?'Coaching completion + speed':'Ranking position only'}</div>
+                      </div>
+                    </div>
+                    {fullDetails&&r.coachingScore!==null?<div className="text-right"><div className="text-xl font-bold text-sky-800">{r.coachingScore.toFixed(1)}</div><div className="text-xs text-slate-500">activity score</div></div>:null}
+                  </div>
+                  {fullDetails&&r.coachingScore!==null&&<div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-lg bg-white/70 p-2"><div className="font-bold text-slate-500">Reviews coached</div><div className="mt-1 text-base font-bold">{r.completionPct?.toFixed(1)}%</div><div className="text-slate-500">{r.coached}/{r.total} completed</div></div>
+                    <div className="rounded-lg bg-white/70 p-2"><div className="font-bold text-slate-500">Within 2 business days</div><div className="mt-1 text-base font-bold">{r.speedPct?.toFixed(1)}%</div><div className="text-slate-500">{r.avgSpeedDays===null?'No completed timing yet':`Avg ${r.avgSpeedDays.toFixed(1)} business days`}</div></div>
+                  </div>}
                 </div>
-                {r.coachingScore!==null&&<div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                  <div className="rounded-lg bg-white/70 p-2"><div className="font-bold text-slate-500">Reviews coached</div><div className="mt-1 text-base font-bold">{r.completionPct?.toFixed(1)}%</div><div className="text-slate-500">{r.coached}/{r.total} completed</div></div>
-                  <div className="rounded-lg bg-white/70 p-2"><div className="font-bold text-slate-500">Within 2 business days</div><div className="mt-1 text-base font-bold">{r.speedPct?.toFixed(1)}%</div><div className="text-slate-500">{r.avgSpeedDays===null?'No completed timing yet':`Avg ${r.avgSpeedDays.toFixed(1)} business days`}</div></div>
-                </div>}
-              </div>)}
+              })}
             </div>
             <div className="mt-3 text-[10px] leading-4 text-slate-400">Ranking uses the last 30 days: 70% coaching completion + 30% completed within 2 business days. Small samples are lightly adjusted; under 30 reviews is Provisional.</div>
           </section>
