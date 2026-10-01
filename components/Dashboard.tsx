@@ -31,6 +31,7 @@ export default function Dashboard({admin,center,userName,viewOnly=false,adminPre
   const [centerRanks,setCenterRanks]=useState<CenterRank[]>([]);
   const [agentRanks,setAgentRanks]=useState<AgentRank[]>([]);
   const [leaderboardKpi,setLeaderboardKpi]=useState(90);
+  const [trendDays,setTrendDays]=useState<7|30|90>(30);
   const [reviewEditor,setReviewEditor]=useState<Review|'new'|null>(null);
 
   async function load(){
@@ -111,6 +112,59 @@ export default function Dashboard({admin,center,userName,viewOnly=false,adminPre
     const rows=selected?agentRanks.filter(a=>a.center===selected):agentRanks;
     return [...rows].sort((a,b)=>b.avg-a.avg||b.count-a.count||a.name.localeCompare(b.name)).slice(0,12).map((a,i)=>({...a,rank:i+1}));
   },[agentRanks,admin,filters.center,center]);
+  const issueTrend=useMemo(()=>{
+    const now=new Date();
+    now.setHours(23,59,59,999);
+    const currentStart=new Date(now); currentStart.setDate(currentStart.getDate()-trendDays+1); currentStart.setHours(0,0,0,0);
+    const previousEnd=new Date(currentStart); previousEnd.setMilliseconds(-1);
+    const previousStart=new Date(currentStart); previousStart.setDate(previousStart.getDate()-trendDays);
+
+    const selectedCenter=admin&&filters.center!=='All'?filters.center:center;
+    const scoped=reviews.filter(r=>!selectedCenter||r.center===selectedCenter);
+    const inWindow=(r:Review,start:Date,end:Date)=>{
+      const d=new Date(r.qaDate);
+      return !Number.isNaN(d.getTime())&&d>=start&&d<=end;
+    };
+    const current=scoped.filter(r=>inWindow(r,currentStart,now));
+    const previous=scoped.filter(r=>inWindow(r,previousStart,previousEnd));
+
+    const categoryNames=['Readiness','Verification','Empathy','Matrix Compliance','Ownership','Efficiency','Documentation','Recap'];
+    const reasonRules=[
+      {label:'Refund',re:/\brefund\b/i},
+      {label:'Cancellation',re:/\bcancel(?:led|lation|ing)?\b/i},
+      {label:'Supplier confirmation / waiver',re:/supplier confirmation|confirmation number|written waiver|\bwaiver\b/i},
+      {label:'Date changes',re:/change(?:d|ing)? dates?|date change/i},
+      {label:'Voucher',re:/\bvoucher\b/i},
+      {label:'Callback / follow-up',re:/call\s?back|follow[ -]?up/i},
+      {label:'Documentation / notes',re:/document(?:ation|ed)?|\bnotes?\b/i},
+    ];
+
+    const build=(rows:Review[])=>{
+      const categories=new Map<string,number>();
+      const reasons=new Map<string,number>();
+      for(const r of rows){
+        for(const issue of r.scoreIssues||[])categories.set(issue,(categories.get(issue)||0)+1);
+        const text=r.scoreMarkdowns||'';
+        for(const rule of reasonRules)if(rule.re.test(text))reasons.set(rule.label,(reasons.get(rule.label)||0)+1);
+      }
+      return {categories,reasons,total:rows.length};
+    };
+    const cur=build(current), prev=build(previous);
+    const rowsFor=(names:string[],kind:'categories'|'reasons')=>names.map(name=>{
+      const count=cur[kind].get(name)||0;
+      const prevCount=prev[kind].get(name)||0;
+      const rate=cur.total?count/cur.total*100:0;
+      const prevRate=prev.total?prevCount/prev.total*100:0;
+      return {name,count,rate,delta:rate-prevRate};
+    }).filter(x=>x.count>0).sort((a,b)=>b.count-a.count||b.rate-a.rate).slice(0,8);
+    return {
+      currentTotal:cur.total,
+      previousTotal:prev.total,
+      categories:rowsFor(categoryNames,'categories'),
+      reasons:rowsFor(reasonRules.map(r=>r.label),'reasons'),
+      scope:selectedCenter||'All Centers'
+    };
+  },[reviews,trendDays,admin,filters.center,center]);
   const medal=(rank:number)=>rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':`🏅 ${rank}`;
 
   function patch<K extends keyof ReviewFilters>(key:K,value:ReviewFilters[K]){setFilters(f=>({...f,[key]:value}))}
@@ -301,6 +355,24 @@ export default function Dashboard({admin,center,userName,viewOnly=false,adminPre
             </div>
           </section>
         </div>
+
+        <section className="glass mt-5 rounded-2xl p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div><h2 className="font-bold">📈 QA Issue Trends</h2><p className="text-sm text-slate-500">{issueTrend.scope} · {issueTrend.currentTotal} review{issueTrend.currentTotal===1?'':'s'} in the current period</p></div>
+            <div className="flex rounded-xl border bg-white p-1">{([7,30,90] as const).map(days=><button key={days} onClick={()=>setTrendDays(days)} className={`focusable rounded-lg px-3 py-1.5 text-xs font-bold ${trendDays===days?'bg-sky-700 text-white':'text-slate-600 hover:bg-slate-50'}`}>{days}d</button>)}</div>
+          </div>
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-xl border bg-white/70 p-4">
+              <div className="font-bold">Most common QA score issues</div>
+              <div className="mt-3 space-y-2">{issueTrend.categories.length===0?<div className="text-sm text-slate-500">No scored issue categories found for this period.</div>:issueTrend.categories.map((x,i)=><div key={x.name} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 p-2 text-sm"><div><b>{i+1}. {x.name}</b><div className="text-xs text-slate-500">{x.count} affected · {x.rate.toFixed(1)}% of reviews</div></div><div className={`text-xs font-bold ${x.delta>0.05?'text-red-700':x.delta<-0.05?'text-green-700':'text-slate-500'}`}>{x.delta>0.05?'↑':x.delta<-0.05?'↓':'—'} {Math.abs(x.delta).toFixed(1)} pts</div></div>)}</div>
+            </div>
+            <div className="rounded-xl border bg-white/70 p-4">
+              <div className="font-bold">Recurring issue reasons</div>
+              <div className="mt-3 space-y-2">{issueTrend.reasons.length===0?<div className="text-sm text-slate-500">No predefined issue reasons matched the Markdowns field for this period.</div>:issueTrend.reasons.map((x,i)=><div key={x.name} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 p-2 text-sm"><div><b>{i+1}. {x.name}</b><div className="text-xs text-slate-500">{x.count} affected · {x.rate.toFixed(1)}% of reviews</div></div><div className={`text-xs font-bold ${x.delta>0.05?'text-red-700':x.delta<-0.05?'text-green-700':'text-slate-500'}`}>{x.delta>0.05?'↑':x.delta<-0.05?'↓':'—'} {Math.abs(x.delta).toFixed(1)} pts</div></div>)}</div>
+            </div>
+          </div>
+          <div className="mt-3 text-[10px] leading-4 text-slate-400">How it works: trends come directly from QA score markdowns and predefined issue rules. No AI is used. Arrows compare issue rate with the previous equal period, so changing review volume does not distort the trend.</div>
+        </section>
 
         {admin&&<div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{CENTERS.map(c=>{const rows=reviews.filter(r=>r.center===c),done=rows.filter(r=>r.coached).length,late=rows.filter(r=>r.status==='Overdue').length,centerPct=rows.length?Math.round(done/rows.length*100):0;return <button key={c} onClick={()=>patch('center',c)} className="glass focusable rounded-2xl p-4 text-left"><div className="font-bold">{c}</div><div className="mt-2 text-sm text-slate-600">{rows.length} Reviews · {rows.length-done} Pending · {late} Overdue</div><div className="mt-2 text-xl font-bold">{centerPct}% Complete</div></button>})}</div>}
 
