@@ -25,7 +25,7 @@ export async function POST(req:Request){
   if(!/\.xlsx?$/i.test(file.name))return NextResponse.json({error:'Only .xlsx or .xls files are accepted.'},{status:400});
 
   const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true});
-  const scoreByCallId=new Map<string,{finalScore:number;scorePassFail:string;scoreMarkdowns:string;scoreIssues:string[]}>();
+  const scoreByCallId=new Map<string,{finalScore:number;scorePassFail:string;scoreMarkdowns:string}>();
   const scoreWs=wb.Sheets['Scores'];
   if(scoreWs){
    const scoreRaw=XLSX.utils.sheet_to_json<unknown[]>(scoreWs,{header:1,defval:''});
@@ -37,33 +37,13 @@ export async function POST(req:Request){
     const finalScoreIx=idx('Final Score');
     const passFailIx=idx('Pass/Fail');
     const markdownsIx=idx('Markdowns');
-    const scoreCategories=[
-      {label:'Readiness',max:2},
-      {label:'Verification',max:8},
-      {label:'Empathy',max:10},
-      {label:'Matrix Compliance',max:20},
-      {label:'Ownership',max:10},
-      {label:'Efficiency',max:10},
-      {label:'Documentation',max:20},
-      {label:'Recap',max:10},
-    ];
-    const scoreCategoryIndexes=scoreCategories.map(category=>({
-      ...category,
-      ix:scoreHeaders.findIndex(h=>h===category.label.toLowerCase()||h.startsWith(category.label.toLowerCase()+' ('))
-    }));
     for(const row of scoreRaw.slice(scoreHeaderIndex+1)){
       const callId=s(row[callIdIx]);
       if(!callId)continue;
       const rawScore=row[finalScoreIx];
       const n=typeof rawScore==='number'?rawScore:Number(String(rawScore??'').replace('%','').trim());
       if(!Number.isFinite(n))continue;
-      const scoreIssues=scoreCategoryIndexes.flatMap(category=>{
-        if(category.ix<0)return [];
-        const raw=row[category.ix];
-        const value=typeof raw==='number'?raw:Number(String(raw??'').replace('%','').trim());
-        return Number.isFinite(value)&&value<category.max?[category.label]:[];
-      });
-      scoreByCallId.set(callId,{finalScore:n,scorePassFail:s(row[passFailIx]),scoreMarkdowns:s(row[markdownsIx]),scoreIssues});
+      scoreByCallId.set(callId,{finalScore:n,scorePassFail:s(row[passFailIx]),scoreMarkdowns:s(row[markdownsIx])});
     }
    }
   }
