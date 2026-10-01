@@ -6,39 +6,32 @@ import type { Center } from '@/lib/types';
 
 const centers:Center[]=['Buwelo','WNS','Concentrix','Telus'];
 
-type SystemAccount={
+type EnvUser={
   id:string;
   name:string;
+  email:string;
+  password:string;
   role:'admin'|'center';
-  center?:Center;
-  emailKey:string;
-  passwordKey:string;
+  center:Center|'';
 };
 
-const systemAccounts:SystemAccount[]=[
-  {id:'system:valdemir',name:'Valdemir Gonçalves',role:'admin',emailKey:'ADMIN_VALDEMIR_EMAIL',passwordKey:'ADMIN_VALDEMIR_PASSWORD'},
-  {id:'system:barbara',name:'Barbara Kalchik',role:'admin',emailKey:'ADMIN_BARBARA_EMAIL',passwordKey:'ADMIN_BARBARA_PASSWORD'},
-  {id:'system:april',name:'April Grantham',role:'admin',emailKey:'ADMIN_APRIL_EMAIL',passwordKey:'ADMIN_APRIL_PASSWORD'},
-  {id:'system:buwelo',name:'Buwelo',role:'center',center:'Buwelo',emailKey:'BUWELO_EMAIL',passwordKey:'BUWELO_PASSWORD'},
-  {id:'system:wns',name:'WNS',role:'center',center:'WNS',emailKey:'WNS_EMAIL',passwordKey:'WNS_PASSWORD'},
-  {id:'system:concentrix',name:'Concentrix',role:'center',center:'Concentrix',emailKey:'CONCENTRIX_EMAIL',passwordKey:'CONCENTRIX_PASSWORD'},
-  {id:'system:telus',name:'Telus',role:'center',center:'Telus',emailKey:'TELUS_EMAIL',passwordKey:'TELUS_PASSWORD'},
-];
-
-function systemAccountData(a:SystemAccount){
-  const email=String(process.env[a.emailKey]||'').trim();
-  const password=String(process.env[a.passwordKey]||'');
-  return email?{...a,email,password}:null;
+function envUsers():EnvUser[]{
+  const rows:EnvUser[]=[
+    {id:'env:valdemir',name:'Valdemir Gonçalves',email:process.env.ADMIN_VALDEMIR_EMAIL||'',password:process.env.ADMIN_VALDEMIR_PASSWORD||'',role:'admin',center:''},
+    {id:'env:barbara',name:'Barbara Kalchik',email:process.env.ADMIN_BARBARA_EMAIL||'',password:process.env.ADMIN_BARBARA_PASSWORD||'',role:'admin',center:''},
+    {id:'env:april',name:'April Grantham',email:process.env.ADMIN_APRIL_EMAIL||'',password:process.env.ADMIN_APRIL_PASSWORD||'',role:'admin',center:''},
+    {id:'env:buwelo',name:'Buwelo',email:process.env.BUWELO_EMAIL||'',password:process.env.BUWELO_PASSWORD||'',role:'center',center:'Buwelo'},
+    {id:'env:wns',name:'WNS',email:process.env.WNS_EMAIL||'',password:process.env.WNS_PASSWORD||'',role:'center',center:'WNS'},
+    {id:'env:concentrix',name:'Concentrix',email:process.env.CONCENTRIX_EMAIL||'',password:process.env.CONCENTRIX_PASSWORD||'',role:'center',center:'Concentrix'},
+    {id:'env:telus',name:'Telus',email:process.env.TELUS_EMAIL||'',password:process.env.TELUS_PASSWORD||'',role:'center',center:'Telus'},
+  ];
+  return rows.filter(r=>r.email&&r.password);
 }
 
-function allSystemAccounts(){
-  return systemAccounts.map(systemAccountData).filter((a):a is NonNullable<ReturnType<typeof systemAccountData>>=>Boolean(a));
-}
+function envById(id:string){return envUsers().find(r=>r.id===id)}
+function envByEmail(email:string){const n=email.trim().toLowerCase();return envUsers().find(r=>r.email.trim().toLowerCase()===n)}
 
-function systemById(id:string){return allSystemAccounts().find(a=>a.id===id)}
-function systemByEmail(email:string){return allSystemAccounts().find(a=>a.email.toLowerCase()===email.trim().toLowerCase())}
-
-function publicUser(id:string,d:FirebaseFirestore.DocumentData,source:'managed'|'system'='managed'){
+function publicUser(id:string,d:FirebaseFirestore.DocumentData,source:'managed'|'env'='managed'){
   return {
     id,
     name:String(d.name||''),
@@ -47,15 +40,10 @@ function publicUser(id:string,d:FirebaseFirestore.DocumentData,source:'managed'|
     center:d.center||'',
     active:d.active!==false,
     source,
-    canReveal:source==='system'||typeof d.passwordCipher==='string',
+    passwordCanReveal:source==='env'||typeof d.passwordEncrypted==='string',
     createdAt:d.createdAt?.toDate?.()?.toISOString?.()||'',
     updatedAt:d.updatedAt?.toDate?.()?.toISOString?.()||'',
   };
-}
-
-async function managedByEmail(email:string){
-  const snap=await db().collection('loginUsers').where('emailLower','==',email.trim().toLowerCase()).limit(1).get();
-  return snap.empty?null:snap.docs[0];
 }
 
 export async function GET(){
@@ -63,21 +51,17 @@ export async function GET(){
   if(!s||s.role!=='admin') return NextResponse.json({error:'Admin access required.'},{status:403});
 
   const snap=await db().collection('loginUsers').orderBy('emailLower').get();
-  const managed=snap.docs.filter(d=>d.data().deleted!==true);
-  const hiddenEmails=new Set(snap.docs.filter(d=>d.data().deleted===true).map(d=>String(d.data().emailLower||'')));
+  const allManaged=snap.docs.map(d=>({id:d.id,data:d.data()}));
+  const managedEmails=new Set(allManaged.map(x=>String(x.data.emailLower||'').toLowerCase()));
+  const deletedEmails=new Set(allManaged.filter(x=>x.data.deleted===true).map(x=>String(x.data.emailLower||'').toLowerCase()));
 
-  const managedByLower=new Map(managed.map(d=>[String(d.data().emailLower||''),d]));
-  const users=managed.map(d=>publicUser(d.id,d.data(),'managed'));
+  const users=[
+    ...allManaged.filter(x=>x.data.deleted!==true).map(x=>publicUser(x.id,x.data,'managed')),
+    ...envUsers()
+      .filter(e=>!managedEmails.has(e.email.toLowerCase())&&!deletedEmails.has(e.email.toLowerCase()))
+      .map(e=>publicUser(e.id,e,'env')),
+  ].sort((a,b)=>a.email.localeCompare(b.email));
 
-  for(const sys of allSystemAccounts()){
-    const lower=sys.email.toLowerCase();
-    if(managedByLower.has(lower)||hiddenEmails.has(lower))continue;
-    users.push(publicUser(sys.id,{
-      name:sys.name,email:sys.email,role:sys.role,center:sys.center||'',active:true
-    },'system'));
-  }
-
-  users.sort((a,b)=>a.role===b.role?a.name.localeCompare(b.name):(a.role==='admin'?-1:1));
   return NextResponse.json({users});
 }
 
@@ -86,23 +70,6 @@ export async function POST(req:Request){
   if(!s||s.role!=='admin') return NextResponse.json({error:'Admin access required.'},{status:403});
   try{
     const b=await req.json();
-
-    if(b.action==='revealPassword'){
-      const id=String(b.id||'');
-      if(id.startsWith('system:')){
-        const sys=systemById(id);
-        if(!sys) return NextResponse.json({error:'Login not found.'},{status:404});
-        return NextResponse.json({password:sys.password});
-      }
-      const ref=db().collection('loginUsers').doc(id);
-      const snap=await ref.get();
-      if(!snap.exists||snap.data()?.deleted===true) return NextResponse.json({error:'Login not found.'},{status:404});
-      const cipher=String(snap.data()?.passwordCipher||'');
-      const password=cipher?decryptPassword(cipher):null;
-      if(!password) return NextResponse.json({error:'This older managed password was stored as a one-way hash and cannot be shown. Use Edit to set a new password once; after that the Show button will work.'},{status:409});
-      return NextResponse.json({password});
-    }
-
     const name=String(b.name||'').trim();
     const email=String(b.email||'').trim();
     const emailLower=email.toLowerCase();
@@ -113,18 +80,18 @@ export async function POST(req:Request){
     if(!name||!email||!email.includes('@')) return NextResponse.json({error:'Name and a valid email are required.'},{status:400});
     if(password.length<8) return NextResponse.json({error:'Password must be at least 8 characters.'},{status:400});
     if(role==='center'&&(!center||!centers.includes(center))) return NextResponse.json({error:'Select a valid call center.'},{status:400});
+    const existing=await db().collection('loginUsers').where('emailLower','==',emailLower).limit(1).get();
+    if(!existing.empty||envByEmail(email)) return NextResponse.json({error:'That email already exists.'},{status:409});
 
-    const existing=await managedByEmail(email);
-    if(existing&&existing.data().deleted!==true) return NextResponse.json({error:'That email already exists.'},{status:409});
-
-    const ref=existing?.ref||db().collection('loginUsers').doc();
+    const ref=db().collection('loginUsers').doc();
     await ref.set({
       name,email,emailLower,role,center:role==='center'?center:null,
-      active:true,deleted:false,passwordHash:hashPassword(password),passwordCipher:encryptPassword(password),
-      createdAt:existing?existing.data().createdAt||FieldValue.serverTimestamp():FieldValue.serverTimestamp(),
-      updatedAt:FieldValue.serverTimestamp(),
-      createdBy:existing?existing.data().createdBy||s.email:s.email,updatedBy:s.email,
-    },{merge:true});
+      active:true,deleted:false,
+      passwordHash:hashPassword(password),
+      passwordEncrypted:encryptPassword(password),
+      createdAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp(),
+      createdBy:s.email,updatedBy:s.email,
+    });
     const saved=await ref.get();
     return NextResponse.json({user:publicUser(ref.id,saved.data()||{})});
   }catch(e){
@@ -138,18 +105,15 @@ export async function PATCH(req:Request){
   try{
     const b=await req.json();
     const id=String(b.id||'');
+    const env=envById(id);
 
     let ref:FirebaseFirestore.DocumentReference;
     let old:FirebaseFirestore.DocumentData={};
-    let systemPassword='';
 
-    if(id.startsWith('system:')){
-      const sys=systemById(id);
-      if(!sys) return NextResponse.json({error:'Login not found.'},{status:404});
-      systemPassword=sys.password;
-      const existing=await managedByEmail(sys.email);
-      ref=existing?.ref||db().collection('loginUsers').doc();
-      old=existing?.data()||{name:sys.name,email:sys.email,role:sys.role,center:sys.center||'',active:true};
+    if(env){
+      const existing=await db().collection('loginUsers').where('emailLower','==',env.email.toLowerCase()).limit(1).get();
+      ref=existing.empty?db().collection('loginUsers').doc():existing.docs[0].ref;
+      old=existing.empty?{}:existing.docs[0].data();
     }else{
       ref=db().collection('loginUsers').doc(id);
       const snap=await ref.get();
@@ -157,8 +121,8 @@ export async function PATCH(req:Request){
       old=snap.data()||{};
     }
 
-    const name=String(b.name??old.name??'').trim();
-    const email=String(b.email??old.email??'').trim();
+    const name=String(b.name??old.name??env?.name??'').trim();
+    const email=env?.email||String(b.email??old.email??'').trim();
     const emailLower=email.toLowerCase();
     const role=b.role==='admin'?'admin':'center';
     const centerRaw=String(b.center||'');
@@ -166,23 +130,30 @@ export async function PATCH(req:Request){
     if(!name||!email||!email.includes('@')) return NextResponse.json({error:'Name and a valid email are required.'},{status:400});
     if(role==='center'&&(!center||!centers.includes(center))) return NextResponse.json({error:'Select a valid call center.'},{status:400});
 
-    const duplicate=await db().collection('loginUsers').where('emailLower','==',emailLower).get();
-    if(duplicate.docs.some(d=>d.id!==ref.id&&d.data().deleted!==true)) return NextResponse.json({error:'That email already exists.'},{status:409});
+    if(!env){
+      const duplicate=await db().collection('loginUsers').where('emailLower','==',emailLower).get();
+      if(duplicate.docs.some(d=>d.id!==id)) return NextResponse.json({error:'That email already exists.'},{status:409});
+      const system=envByEmail(email);
+      if(system&&String(old.emailLower||'')!==emailLower) return NextResponse.json({error:'That email belongs to an existing system login.'},{status:409});
+    }
 
     const update:Record<string,unknown>={
       name,email,emailLower,role,center:role==='center'?center:null,
-      active:b.active!==false,deleted:false,updatedAt:FieldValue.serverTimestamp(),updatedBy:s.email,
+      active:b.active!==false,deleted:false,
+      updatedAt:FieldValue.serverTimestamp(),updatedBy:s.email,
     };
 
-    let password=String(b.password||'');
-    if(!password&&id.startsWith('system:')&&!old.passwordHash)password=systemPassword;
+    const password=String(b.password||'');
     if(password){
       if(password.length<8) return NextResponse.json({error:'Password must be at least 8 characters.'},{status:400});
       update.passwordHash=hashPassword(password);
-      update.passwordCipher=encryptPassword(password);
+      update.passwordEncrypted=encryptPassword(password);
+    }else if(env&&typeof old.passwordHash!=='string'){
+      update.passwordHash=hashPassword(env.password);
+      update.passwordEncrypted=encryptPassword(env.password);
     }
 
-    if(id.startsWith('system:')&&!old.createdAt){
+    if(env&&typeof old.createdAt==='undefined'){
       update.createdAt=FieldValue.serverTimestamp();
       update.createdBy=s.email;
     }
@@ -203,17 +174,14 @@ export async function DELETE(req:Request){
     const id=String(b.id||'');
     if(!id) return NextResponse.json({error:'Login id is required.'},{status:400});
 
-    if(id.startsWith('system:')){
-      const sys=systemById(id);
-      if(!sys) return NextResponse.json({error:'Login not found.'},{status:404});
-      const existing=await managedByEmail(sys.email);
-      const ref=existing?.ref||db().collection('loginUsers').doc();
+    const env=envById(id);
+    if(env){
+      const existing=await db().collection('loginUsers').where('emailLower','==',env.email.toLowerCase()).limit(1).get();
+      const ref=existing.empty?db().collection('loginUsers').doc():existing.docs[0].ref;
       await ref.set({
-        name:sys.name,email:sys.email,emailLower:sys.email.toLowerCase(),role:sys.role,center:sys.center||null,
-        active:false,deleted:true,passwordHash:hashPassword(sys.password),passwordCipher:encryptPassword(sys.password),
+        name:env.name,email:env.email,emailLower:env.email.toLowerCase(),role:env.role,center:env.center||null,
+        active:false,deleted:true,passwordHash:hashPassword(env.password),
         updatedAt:FieldValue.serverTimestamp(),updatedBy:s.email,
-        createdAt:existing?existing.data().createdAt||FieldValue.serverTimestamp():FieldValue.serverTimestamp(),
-        createdBy:existing?existing.data().createdBy||s.email:s.email,
       },{merge:true});
       return NextResponse.json({ok:true});
     }
@@ -221,9 +189,9 @@ export async function DELETE(req:Request){
     const ref=db().collection('loginUsers').doc(id);
     const snap=await ref.get();
     if(!snap.exists) return NextResponse.json({error:'Login not found.'},{status:404});
-    const email=String(snap.data()?.email||'');
-    const sys=systemByEmail(email);
-    if(sys){
+    const d=snap.data()||{};
+    const system=envByEmail(String(d.email||''));
+    if(system){
       await ref.set({active:false,deleted:true,updatedAt:FieldValue.serverTimestamp(),updatedBy:s.email},{merge:true});
     }else{
       await ref.delete();
@@ -231,5 +199,25 @@ export async function DELETE(req:Request){
     return NextResponse.json({ok:true});
   }catch(e){
     return NextResponse.json({error:e instanceof Error?e.message:'Unable to delete login.'},{status:500});
+  }
+}
+
+export async function PUT(req:Request){
+  const s=await getSession();
+  if(!s||s.role!=='admin') return NextResponse.json({error:'Admin access required.'},{status:403});
+  try{
+    const b=await req.json();
+    const id=String(b.id||'');
+    const env=envById(id);
+    if(env) return NextResponse.json({password:env.password});
+
+    const snap=await db().collection('loginUsers').doc(id).get();
+    if(!snap.exists) return NextResponse.json({error:'Login not found.'},{status:404});
+    const encrypted=String(snap.data()?.passwordEncrypted||'');
+    const password=encrypted?decryptPassword(encrypted):null;
+    if(!password) return NextResponse.json({error:'This older managed password was stored as a one-way hash. Set a new password once, then Show will work.'},{status:409});
+    return NextResponse.json({password});
+  }catch(e){
+    return NextResponse.json({error:e instanceof Error?e.message:'Unable to reveal password.'},{status:500});
   }
 }
