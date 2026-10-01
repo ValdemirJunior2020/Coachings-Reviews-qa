@@ -4,6 +4,7 @@ import {useEffect,useMemo,useState} from 'react';
 import {filterReviews,type ReviewFilters} from '@/lib/filter';
 import type {Center,Review,ReviewStatus} from '@/lib/types';
 import TinyLoader from '@/components/TinyLoader';
+import MatrixQuickSearch from '@/components/MatrixQuickSearch';
 
 const CENTERS:Center[]=['Buwelo','WNS','Concentrix','Telus'];
 type PresenceUser={id:string;email:string;name:string;role:'admin'|'center';center:Center|'';page:string;status:'online'|'idle'|'offline';lastSeen:string};
@@ -36,6 +37,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
   const [centerRanks,setCenterRanks]=useState<CenterRank[]>([]);
   const [agentRanks,setAgentRanks]=useState<AgentRank[]>([]);
   const [leaderboardKpi,setLeaderboardKpi]=useState(90);
+  const [matrixOpen,setMatrixOpen]=useState(false);
 
   async function load(){
     setLoading(true);setError('');
@@ -274,11 +276,13 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     <button onClick={()=>chooseStatus('Overdue')} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">Overdue</button>
     <button onClick={()=>chooseStatus('Completed')} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">Completed Coaching</button>
     <button onClick={()=>{setDisputedOnly(true);patch('status','All');setViewMode('cards');setMenuOpen(false)}} className="focusable rounded-lg p-2 text-left hover:bg-orange-50">🟠 TL Disputed{admin?` (${disputed})`:''}</button>
+    <button onClick={()=>{setMatrixOpen(true);setMenuOpen(false)}} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">⌕ Matrix Quick Search</button>
     {admin&&<button onClick={()=>location.href='/admin/settings'} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">⚙ Admin / Settings</button>}
     <button onClick={logout} disabled={logoutBusy} className="focusable rounded-lg p-2 text-left text-red-700 hover:bg-red-50 disabled:opacity-50">{logoutBusy?<TinyLoader label="Logging out..." />:'Logout'}</button>
   </nav>;
 
   return <div className="min-h-screen md:flex">
+    {matrixOpen&&<MatrixQuickSearch onClose={()=>setMatrixOpen(false)}/>}
     <button onClick={()=>setMenuOpen(true)} className="focusable fixed left-4 top-4 z-40 rounded-xl bg-white/95 px-3 py-2 shadow md:hidden" aria-label="Open navigation">☰ Menu</button>
     {menuOpen&&<button className="fixed inset-0 z-40 bg-slate-900/35 md:hidden" aria-label="Close navigation" onClick={()=>setMenuOpen(false)}/>}
     <aside className={`glass fixed inset-y-0 left-0 z-50 w-64 p-5 transition-transform md:translate-x-0 ${menuOpen?'translate-x-0':'-translate-x-full'} md:block`}>
