@@ -60,6 +60,7 @@ export async function authenticate(email: string, password: string): Promise<Ses
   const admins = [
     { name: 'Valdemir Gonçalves', email: process.env.ADMIN_VALDEMIR_EMAIL, password: process.env.ADMIN_VALDEMIR_PASSWORD },
     { name: 'Barbara Kalchik', email: process.env.ADMIN_BARBARA_EMAIL, password: process.env.ADMIN_BARBARA_PASSWORD },
+    { name: 'April Grantham', email: process.env.ADMIN_APRIL_EMAIL, password: process.env.ADMIN_APRIL_PASSWORD },
   ];
   for (const a of admins) {
     if (a.email && a.password && normalized === a.email.trim().toLowerCase() && safeEqual(password, a.password)) {
