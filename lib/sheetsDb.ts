@@ -72,3 +72,12 @@ export async function getLeaderboardRows(){
     reviews:Array<Pick<Review,'center'|'agent'|'finalScore'|'coached'|'qaDate'|'dateCoached'>>;
   }>('getLeaderboardData');
 }
+
+
+export async function importCenterRows(center:Center,headers:string[],rows:unknown[][]){
+  return databaseRequest<{added:number;updated:number;skipped:number}>('importCenterRows',{center,headers,rows});
+}
+
+export async function replaceScores(rows:unknown[][]){
+  return databaseRequest<{written:number}>('replaceScores',{rows});
+}
