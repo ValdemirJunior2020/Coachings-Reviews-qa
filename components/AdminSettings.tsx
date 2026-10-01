@@ -10,6 +10,8 @@ type LoginUser={
   role:'admin'|'center';
   center:Center|'';
   active:boolean;
+  source:'managed'|'env';
+  passwordCanReveal:boolean;
 };
 
 const CENTERS:Center[]=['Buwelo','WNS','Concentrix','Telus'];
@@ -20,6 +22,8 @@ export default function AdminSettings({userName}:{userName:string}){
   const [flash,setFlash]=useState('');
   const [editing,setEditing]=useState<LoginUser|null>(null);
   const [adding,setAdding]=useState(false);
+  const [revealed,setRevealed]=useState<Record<string,string>>({});
+  const [showing,setShowing]=useState<Record<string,boolean>>({});
 
   async function load(){
     setLoading(true);
@@ -71,6 +75,18 @@ export default function AdminSettings({userName}:{userName:string}){
     await load();
   }
 
+  async function showPassword(user:LoginUser){
+    if(revealed[user.id]){
+      setShowing(v=>({...v,[user.id]:!v[user.id]}));
+      return;
+    }
+    const res=await fetch('/api/admin/users',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({id:user.id})});
+    const d=await res.json();
+    if(!res.ok){setFlash(d.error||'Unable to reveal password.');return}
+    setRevealed(v=>({...v,[user.id]:String(d.password||'')}));
+    setShowing(v=>({...v,[user.id]:true}));
+  }
+
   const formUser=editing;
   return <div className="min-h-screen md:flex">
     <aside className="glass fixed inset-y-0 left-0 z-40 hidden w-64 p-5 md:block">
@@ -86,21 +102,25 @@ export default function AdminSettings({userName}:{userName:string}){
       <div className="mx-auto max-w-5xl">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div><h1 className="text-3xl font-bold">Admin / Settings</h1><p className="text-slate-500">Manage website logins · {userName}</p></div>
-          <div className="flex gap-2"><button onClick={()=>location.href='/admin'} className="focusable rounded-xl border bg-white px-4 py-2 md:hidden">← Dashboard</button><button onClick={()=>{setEditing(null);setAdding(true)}} className="focusable rounded-xl bg-sky-700 px-4 py-2 font-bold text-white">+ Add Login</button></div>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={()=>location.href='/admin'} className="focusable rounded-xl border bg-white px-4 py-2 md:hidden">← Dashboard</button>
+            <button onClick={()=>location.href='/admin/call-center-view'} className="focusable rounded-xl border border-purple-200 bg-purple-100 px-4 py-2 font-bold text-purple-800">👁 Call-Center-View-Mode</button>
+            <button onClick={()=>{setEditing(null);setAdding(true)}} className="focusable rounded-xl bg-sky-700 px-4 py-2 font-bold text-white">+ Add Login</button>
+          </div>
         </div>
 
         {flash&&<div className="mt-4 rounded-xl bg-sky-50 p-3 text-sky-800">{flash}</div>}
 
         <div className="glass mt-6 overflow-hidden rounded-2xl">
-          <div className="border-b p-4"><h2 className="font-bold">Managed Logins</h2><p className="text-sm text-slate-500">Passwords are never displayed. Use Edit to set a new password.</p></div>
-          {loading?<div className="p-8 text-center">Loading logins...</div>:users.length===0?<div className="p-8 text-center text-slate-500">No managed logins yet. Existing environment logins still work until you add managed accounts.</div>:<div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead className="bg-slate-50 text-left"><tr><th className="p-3">Name</th><th className="p-3">Email / Login</th><th className="p-3">Access</th><th className="p-3">Status</th><th className="p-3">Actions</th></tr></thead><tbody>{users.map(u=><tr key={u.id} className="border-t"><td className="p-3 font-semibold">{u.name}</td><td className="p-3">{u.email}</td><td className="p-3">{u.role==='admin'?'Admin':u.center}</td><td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${u.active?'bg-green-100 text-green-800':'bg-slate-200 text-slate-600'}`}>{u.active?'Active':'Disabled'}</span></td><td className="p-3"><div className="flex gap-2"><button onClick={()=>{setEditing(u);setAdding(false)}} className="focusable rounded-lg border bg-white px-3 py-1.5">Edit</button><button onClick={()=>toggle(u)} className="focusable rounded-lg border bg-white px-3 py-1.5">{u.active?'Disable':'Enable'}</button><button onClick={()=>deleteUser(u)} className="focusable rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 font-semibold text-red-700">Delete</button></div></td></tr>)}</tbody></table></div>}
+          <div className="border-b p-4"><h2 className="font-bold">All User Logins</h2><p className="text-sm text-slate-500">Super Admin only. Use Show to reveal available passwords; older managed passwords may require one reset first.</p></div>
+          {loading?<div className="p-8 text-center">Loading logins...</div>:users.length===0?<div className="p-8 text-center text-slate-500">No managed logins yet. Existing environment logins still work until you add managed accounts.</div>:<div className="overflow-x-auto"><table className="w-full min-w-[980px] text-sm"><thead className="bg-slate-50 text-left"><tr><th className="p-3">Name</th><th className="p-3">Email / Login</th><th className="p-3">Password</th><th className="p-3">Access</th><th className="p-3">Status</th><th className="p-3">Actions</th></tr></thead><tbody>{users.map(u=><tr key={u.id} className="border-t"><td className="p-3 font-semibold">{u.name}</td><td className="p-3">{u.email}</td><td className="p-3"><div className="flex items-center gap-2"><code className="min-w-[110px] rounded-lg bg-slate-100 px-2 py-1 text-xs">{showing[u.id]&&revealed[u.id]?revealed[u.id]:'••••••••'}</code><button onClick={()=>showPassword(u)} className="focusable rounded-lg border bg-white px-2 py-1 text-xs font-semibold">{showing[u.id]?'Hide':'Show'}</button></div></td><td className="p-3">{u.role==='admin'?<span className="rounded-xl bg-green-100 px-3 py-1 text-xs font-bold text-green-800">Admin</span>:<span>{u.center}</span>}</td><td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${u.active?'bg-green-100 text-green-800':'bg-slate-200 text-slate-600'}`}>{u.active?'Active':'Disabled'}</span></td><td className="p-3"><div className="flex gap-2"><button onClick={()=>{setEditing(u);setAdding(false)}} className="focusable rounded-lg border bg-white px-3 py-1.5">Edit</button><button onClick={()=>toggle(u)} className="focusable rounded-lg border bg-white px-3 py-1.5">{u.active?'Disable':'Enable'}</button><button onClick={()=>deleteUser(u)} className="focusable rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 font-semibold text-red-700">Delete</button></div></td></tr>)}</tbody></table></div>}
         </div>
 
         {(adding||editing)&&<div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/40 p-4"><form onSubmit={save} className="glass w-full max-w-lg rounded-3xl p-6">
           <h2 className="text-xl font-bold">{editing?'Edit Login':'Add Login'}</h2>
           <p className="mt-1 text-sm text-slate-500">{editing?'Change the login details. Leave password blank to keep the current password.':'Create a new Admin or Call Center login.'}</p>
           <label className="mt-4 block font-semibold">Name<input name="name" defaultValue={formUser?.name||''} required className="focusable mt-1 w-full rounded-xl border p-3"/></label>
-          <label className="mt-4 block font-semibold">Email / Login<input name="email" type="email" defaultValue={formUser?.email||''} required className="focusable mt-1 w-full rounded-xl border p-3"/></label>
+          <label className="mt-4 block font-semibold">Email / Login<input name="email" type="email" defaultValue={formUser?.email||''} readOnly={formUser?.source==='env'} required className={`focusable mt-1 w-full rounded-xl border p-3 ${formUser?.source==='env'?'bg-slate-100 text-slate-500':''}`}/>{formUser?.source==='env'&&<div className="mt-1 text-xs text-slate-500">System login email stays fixed. Change the password or access here.</div>}</label>
           <label className="mt-4 block font-semibold">Access<select name="role" defaultValue={formUser?.role||'center'} className="focusable mt-1 w-full rounded-xl border p-3" onChange={e=>{const sel=e.currentTarget.form?.elements.namedItem('center') as HTMLSelectElement|null;if(sel)sel.disabled=e.target.value==='admin'}}><option value="center">Call Center</option><option value="admin">Admin</option></select></label>
           <label className="mt-4 block font-semibold">Call Center<select name="center" defaultValue={formUser?.center||'Buwelo'} disabled={formUser?.role==='admin'} className="focusable mt-1 w-full rounded-xl border p-3">{CENTERS.map(c=><option key={c}>{c}</option>)}</select></label>
           <label className="mt-4 block font-semibold">{editing?'New Password (optional)':'Password'}<input name="password" type="password" required={!editing} minLength={8} autoComplete="new-password" className="focusable mt-1 w-full rounded-xl border p-3" placeholder={editing?'Leave blank to keep current password':'Minimum 8 characters'}/></label>
