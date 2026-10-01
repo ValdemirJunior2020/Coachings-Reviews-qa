@@ -3,6 +3,8 @@ import type { Center, Review } from './types';
 import { businessDaysOld, isOverdue } from './date';
 
 const CENTERS: Center[] = ['Buwelo', 'WNS', 'Concentrix', 'Telus'];
+const DAILY_FINDINGS_SPREADSHEET_ID = '1YD6wgQqaV-luNexAv_fiTg-AhXcH_DoJKt5HubJsbWg';
+
 const COACHING_HEADERS = [
   'Coached?',
   'Date Coached',
@@ -12,14 +14,12 @@ const COACHING_HEADERS = [
 ];
 
 function spreadsheetId() {
-  const id = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-  if (!id) throw new Error('GOOGLE_SHEETS_SPREADSHEET_ID is not configured');
-  return id;
+  return process.env.GOOGLE_SHEETS_SPREADSHEET_ID || DAILY_FINDINGS_SPREADSHEET_ID;
 }
 
 function sheets() {
-  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const key = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || process.env.FIREBASE_CLIENT_EMAIL;
+  const key = (process.env.GOOGLE_PRIVATE_KEY || process.env.FIREBASE_PRIVATE_KEY)?.replace(/\\n/g, '\n');
   if (!email || !key) throw new Error('Google Sheets service account is not configured');
 
   const auth = new google.auth.JWT({
@@ -300,8 +300,6 @@ async function appendAudit(a: {
   });
 }
 
-
-const DAILY_FINDINGS_SPREADSHEET_ID = '1YD6wgQqaV-luNexAv_fiTg-AhXcH_DoJKt5HubJsbWg';
 
 function coachingSheetsClient() {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || process.env.FIREBASE_CLIENT_EMAIL;
