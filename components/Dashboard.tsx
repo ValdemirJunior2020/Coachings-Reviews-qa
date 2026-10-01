@@ -2,6 +2,7 @@
 
 import {useEffect,useMemo,useState} from 'react';
 import {filterReviews,type ReviewFilters} from '@/lib/filter';
+import WeatherCard from '@/components/WeatherCard';
 import type {Center,Review,ReviewStatus} from '@/lib/types';
 
 const CENTERS:Center[]=['Buwelo','WNS','Concentrix','Telus'];
@@ -241,6 +242,7 @@ export default function Dashboard({admin,center,userName,viewOnly=false,adminPre
     <aside className={`glass fixed inset-y-0 left-0 z-50 w-64 p-5 transition-transform md:translate-x-0 ${menuOpen?'translate-x-0':'-translate-x-full'} md:block`}>
       <div className="flex items-center gap-3"><img src="/images/qa-control-background.jpg" alt="QA Control" className="h-12 w-12 rounded-xl object-cover"/><div><div className="font-bold">QA Control</div><div className="text-xs text-slate-500">{viewOnly?`View Only · ${center}`:admin?'Super Admin':center}</div></div></div>
       {nav}
+      <div className="mt-5"><WeatherCard/></div>
     </aside>
     <main className="w-full p-4 pt-20 md:ml-64 md:p-8">
       <div className="mx-auto max-w-7xl">
