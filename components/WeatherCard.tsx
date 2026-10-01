@@ -47,14 +47,14 @@ export default function WeatherCard(){
   const cloudy=isCloudy(code);
   const mode=storm?'storm':rain?'rain':cloudy?'cloud':'sunny';
 
-  return <div className={`weather-card weather-${mode}`}>
+  return <div className={`weather-card weather-mode-${mode}`}>
     <div className="weather-bg" aria-hidden="true">
       {mode==='sunny'&&<div className="weather-sun"><span/><span/><span/><span/><span/><span/><span/><span/></div>}
       {(mode==='cloud'||mode==='rain'||mode==='storm')&&<>
-        <div className="weather-cloud weather-cloud-a"/>
-        <div className="weather-cloud weather-cloud-b"/>
+        <div className="weather-cloud-shape weather-cloud-a"/>
+        <div className="weather-cloud-shape weather-cloud-b"/>
       </>}
-      {(mode==='rain'||mode==='storm')&&<div className="weather-rain">{Array.from({length:18}).map((_,i)=><i key={i} style={{left:`${(i*17)%100}%`,animationDelay:`${(i%6)*-.18}s`,animationDuration:`${.75+(i%5)*.08}s`}}/>)}</div>}
+      {(mode==='rain'||mode==='storm')&&<div className="weather-rain-layer">{Array.from({length:18}).map((_,i)=><i key={i} style={{left:`${(i*17)%100}%`,animationDelay:`${(i%6)*-.18}s`,animationDuration:`${.75+(i%5)*.08}s`}}/>)}</div>}
       {mode==='storm'&&<div className="weather-lightning">⚡</div>}
     </div>
     <div className="weather-content">
