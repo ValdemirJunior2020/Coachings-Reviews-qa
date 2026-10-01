@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { SignJWT, jwtVerify } from 'jose';
 import { randomBytes, scryptSync, timingSafeEqual } from 'crypto';
-import { db } from './firebaseAdmin';
+import { authenticateManagedUser } from './sheetsDb';
 import type { Center, SessionUser } from './types';
 
 const COOKIE = 'qa_session';
@@ -45,27 +45,24 @@ export function verifyPassword(password:string, stored:string){
 export async function authenticate(email: string, password: string): Promise<SessionUser | null> {
   const normalized = email.trim().toLowerCase();
 
-  // Admin-managed accounts in Firestore take priority when Firestore is available.
-  // If Firestore is temporarily unavailable or misconfigured, fall back to the
-  // original Netlify environment logins instead of blocking every login.
+  // Managed accounts now live in the Daily-Findings Google Sheet web app.
+  // If the database URL is not ready, the original Netlify environment logins
+  // remain available so the site never locks everyone out.
   try{
-    const snap=await db().collection('loginUsers').where('emailLower','==',normalized).limit(1).get();
-    if(!snap.empty){
-      const d=snap.docs[0].data();
-      if(d.active!==false && typeof d.passwordHash==='string' && verifyPassword(password,d.passwordHash)){
-        if(d.role==='admin') return {email:String(d.email),name:String(d.name||d.email),role:'admin'};
-        if(d.role==='center'&&d.center) return {email:String(d.email),name:String(d.name||d.center),role:'center',center:d.center as Center};
-      }
-      return null;
+    const managed=await authenticateManagedUser(normalized,password);
+    if(managed.found){
+      if(!managed.valid||!managed.active||managed.deleted||!managed.user)return null;
+      return managed.user;
     }
   }catch(error){
-    console.error('Managed login lookup failed; using environment login fallback.',error);
+    console.error('Managed Google Sheet login lookup failed; using environment login fallback.',error);
   }
 
   // Existing environment accounts remain available as a safe bootstrap/fallback.
   const admins = [
     { name: 'Valdemir Gonçalves', email: process.env.ADMIN_VALDEMIR_EMAIL, password: process.env.ADMIN_VALDEMIR_PASSWORD },
     { name: 'Barbara Kalchik', email: process.env.ADMIN_BARBARA_EMAIL, password: process.env.ADMIN_BARBARA_PASSWORD },
+    { name: 'April Grantham', email: process.env.ADMIN_APRIL_EMAIL, password: process.env.ADMIN_APRIL_PASSWORD },
   ];
   for (const a of admins) {
     if (a.email && a.password && normalized === a.email.trim().toLowerCase() && safeEqual(password, a.password)) {
