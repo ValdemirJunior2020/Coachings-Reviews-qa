@@ -39,4 +39,5 @@ export interface Review {
   finalScore: number | null;
   scorePassFail: string;
   scoreMarkdowns: string;
+  scoreIssues: string[];
 }
