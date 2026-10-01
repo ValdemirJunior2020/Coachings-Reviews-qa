@@ -112,7 +112,6 @@ export default function Dashboard({admin,center,userName,viewOnly=false,adminPre
     return [...rows].sort((a,b)=>b.avg-a.avg||b.count-a.count||a.name.localeCompare(b.name)).slice(0,12).map((a,i)=>({...a,rank:i+1}));
   },[agentRanks,admin,filters.center,center]);
   const medal=(rank:number)=>rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':`🏅 ${rank}`;
-  const ordinal=(rank:number)=>rank===1?'1st':rank===2?'2nd':rank===3?'3rd':`${rank}th`;
 
   function patch<K extends keyof ReviewFilters>(key:K,value:ReviewFilters[K]){setFilters(f=>({...f,[key]:value}))}
   function chooseStatus(value:'All'|ReviewStatus){setDisputedOnly(false);patch('status',value);setMenuOpen(false)}
@@ -244,7 +243,6 @@ export default function Dashboard({admin,center,userName,viewOnly=false,adminPre
       <div className="flex items-center gap-3"><img src="/images/qa-control-background.jpg" alt="QA Control" className="h-12 w-12 rounded-xl object-cover"/><div><div className="font-bold">QA Control</div><div className="text-xs text-slate-500">{viewOnly?`View Only · ${center}`:admin?'Super Admin':center}</div></div></div>
       {nav}
       <div className="mt-5"><WeatherCard/></div>
-
     </aside>
     <main className="w-full p-4 pt-20 md:ml-64 md:p-8">
       <div className="mx-auto max-w-7xl">
@@ -274,27 +272,18 @@ export default function Dashboard({admin,center,userName,viewOnly=false,adminPre
 
         <div className="mt-5 grid gap-4 xl:grid-cols-2">
           <section className="glass rounded-2xl p-5">
-            <div className="flex items-center justify-between gap-3"><div><h2 className="font-bold">🏆 Center Coaching Leaderboard</h2><p className="text-sm text-slate-500">Ranking formula: 70% coaching completion + 30% coaching speed</p></div><span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-800">Coaching Activity</span></div>
+            <div className="flex items-center justify-between gap-3"><div><h2 className="font-bold">🏆 Center Coaching Leaderboard</h2><p className="text-sm text-slate-500">70% reviews completed · 30% coached within 2 business days</p></div><span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-800">Coaching Activity</span></div>
             <div className="mt-4 space-y-2">
-              {centerRanks.length===0?<div className="text-sm text-slate-500">No coaching activity loaded yet.</div>:centerRanks.map((r,i)=>{
-                const fullDetails=admin&&!viewOnly||r.isOwn;
-                return <div key={`${r.rank}-${i}`} className={`rounded-xl border p-3 ${r.isOwn?'border-sky-300 bg-sky-50':'bg-white/70'}`}>
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <span className="min-w-10 text-sm font-extrabold text-slate-700">{ordinal(r.rank)}</span>
-                      <div>
-                        <div className="font-bold">{fullDetails?r.name:'Other Center'}{r.isOwn?' · Your Center':''}{fullDetails&&r.provisional?<span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">Provisional</span>:null}</div>
-                        <div className="text-xs text-slate-500">{fullDetails?'Coaching completion + speed':'Ranking position only'}</div>
-                      </div>
-                    </div>
-                    {fullDetails&&r.coachingScore!==null?<div className="text-right"><div className="text-xl font-bold text-sky-800">{r.coachingScore.toFixed(1)}</div><div className="text-xs text-slate-500">activity score</div></div>:null}
-                  </div>
-                  {fullDetails&&r.coachingScore!==null&&<div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-lg bg-white/70 p-2"><div className="font-bold text-slate-500">Reviews coached</div><div className="mt-1 text-base font-bold">{r.completionPct?.toFixed(1)}%</div><div className="text-slate-500">{r.coached}/{r.total} completed</div></div>
-                    <div className="rounded-lg bg-white/70 p-2"><div className="font-bold text-slate-500">Within 2 business days</div><div className="mt-1 text-base font-bold">{r.speedPct?.toFixed(1)}%</div><div className="text-slate-500">{r.avgSpeedDays===null?'No completed timing yet':`Avg ${r.avgSpeedDays.toFixed(1)} business days`}</div></div>
-                  </div>}
+              {centerRanks.length===0?<div className="text-sm text-slate-500">No coaching activity loaded yet.</div>:centerRanks.map((r,i)=><div key={`${r.rank}-${i}`} className={`rounded-xl border p-3 ${r.isOwn?'border-sky-300 bg-sky-50':'bg-white/70'}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3"><span className="text-xl">{medal(r.rank)}</span><div><div className="font-bold">{r.name}{r.isOwn?' · Your Center':''}{r.provisional?<span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">Provisional</span>:null}</div><div className="text-xs text-slate-500">{r.isOwn||admin?'Coaching completion + speed':'Private center'}</div></div></div>
+                  <div className="text-right">{r.coachingScore===null?<div className="text-sm font-semibold text-slate-400">Numbers private</div>:<><div className="text-xl font-bold text-sky-800">{r.coachingScore.toFixed(1)}</div><div className="text-xs text-slate-500">activity score</div></>}</div>
                 </div>
-              })}
+                {r.coachingScore!==null&&<div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-lg bg-white/70 p-2"><div className="font-bold text-slate-500">Reviews coached</div><div className="mt-1 text-base font-bold">{r.completionPct?.toFixed(1)}%</div><div className="text-slate-500">{r.coached}/{r.total} completed</div></div>
+                  <div className="rounded-lg bg-white/70 p-2"><div className="font-bold text-slate-500">Within 2 business days</div><div className="mt-1 text-base font-bold">{r.speedPct?.toFixed(1)}%</div><div className="text-slate-500">{r.avgSpeedDays===null?'No completed timing yet':`Avg ${r.avgSpeedDays.toFixed(1)} business days`}</div></div>
+                </div>}
+              </div>)}
             </div>
             <div className="mt-3 text-[10px] leading-4 text-slate-400">Ranking uses the last 30 days: 70% coaching completion + 30% completed within 2 business days. Small samples are lightly adjusted; under 30 reviews is Provisional.</div>
           </section>
@@ -312,8 +301,6 @@ export default function Dashboard({admin,center,userName,viewOnly=false,adminPre
             </div>
           </section>
         </div>
-
-
 
         {admin&&<div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{CENTERS.map(c=>{const rows=reviews.filter(r=>r.center===c),done=rows.filter(r=>r.coached).length,late=rows.filter(r=>r.status==='Overdue').length,centerPct=rows.length?Math.round(done/rows.length*100):0;return <button key={c} onClick={()=>patch('center',c)} className="glass focusable rounded-2xl p-4 text-left"><div className="font-bold">{c}</div><div className="mt-2 text-sm text-slate-600">{rows.length} Reviews · {rows.length-done} Pending · {late} Overdue</div><div className="mt-2 text-xl font-bold">{centerPct}% Complete</div></button>})}</div>}
 
