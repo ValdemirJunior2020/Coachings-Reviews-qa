@@ -274,7 +274,7 @@ export default function Dashboard({admin,center,userName,viewOnly=false,adminPre
 
         <div className="mt-5 grid gap-4 xl:grid-cols-2">
           <section className="glass rounded-2xl p-5">
-            <div className="flex items-center justify-between gap-3"><div><h2 className="font-bold">🏆 Center Coaching Leaderboard</h2><p className="text-sm text-slate-500">70% reviews completed · 30% coached within 2 business days</p></div><span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-800">Coaching Activity</span></div>
+            <div className="flex items-center justify-between gap-3"><div><h2 className="font-bold">🏆 Center Coaching Leaderboard</h2><p className="text-sm text-slate-500">Ranking formula: 70% coaching completion + 30% coaching speed</p></div><span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-800">Coaching Activity</span></div>
             <div className="mt-4 space-y-2">
               {centerRanks.length===0?<div className="text-sm text-slate-500">No coaching activity loaded yet.</div>:centerRanks.map((r,i)=>{
                 const fullDetails=admin&&!viewOnly||r.isOwn;
