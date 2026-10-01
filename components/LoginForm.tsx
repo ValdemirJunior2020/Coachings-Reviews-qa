@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import TinyLoader from '@/components/TinyLoader';
 
 export default function LoginForm() {
   const r = useRouter();
@@ -14,24 +15,31 @@ export default function LoginForm() {
     setError('');
 
     const f = new FormData(e.currentTarget);
-    const res = await fetch('/api/login', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        email: f.get('email'),
-        password: f.get('password'),
-      }),
-    });
-    const d = await res.json();
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          email: f.get('email'),
+          password: f.get('password'),
+        }),
+      });
+      const text = await res.text();
+      let d: { error?: string; redirect?: string } = {};
+      try { d = text ? JSON.parse(text) : {}; } catch {}
 
-    if (!res.ok) {
-      setError(d.error || 'Invalid login');
+      if (!res.ok || !d.redirect) {
+        setError(d.error || 'Invalid login');
+        setBusy(false);
+        return;
+      }
+
+      r.push(d.redirect);
+      r.refresh();
+    } catch {
+      setError('Unable to sign in right now.');
       setBusy(false);
-      return;
     }
-
-    r.push(d.redirect);
-    r.refresh();
   }
 
   return (
@@ -67,7 +75,7 @@ export default function LoginForm() {
         disabled={busy}
         className="focusable w-full rounded-xl bg-sky-700 p-3 font-bold text-white disabled:opacity-50"
       >
-        {busy ? 'Signing in...' : 'Sign in'}
+        {busy ? <TinyLoader label="Signing in..." /> : 'Sign in'}
       </button>
     </form>
   );
