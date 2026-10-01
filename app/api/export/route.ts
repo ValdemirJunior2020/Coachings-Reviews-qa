@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import * as XLSX from 'xlsx-js-style';
 import { getSession } from '@/lib/auth';
-import { getReviews } from '@/lib/reviews';
+import { getSheetReviews } from '@/lib/sheetsDb';
 import type { Center, Review } from '@/lib/types';
 
 const valid:Center[]=['Buwelo','Concentrix','WNS','Telus'];
@@ -155,7 +155,7 @@ export async function GET(req:Request){
   if(s.role==='center')center=s.center;
   else if(requested&&valid.includes(requested))center=requested;
 
-  const reviews=await getReviews(center);
+  const reviews=await getSheetReviews(center);
   const wb=XLSX.utils.book_new();
 
   if(center){
