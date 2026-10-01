@@ -24,6 +24,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
   const [saving,setSaving]=useState(false);
   const [reopeningCallId,setReopeningCallId]=useState('');
   const [uploading,setUploading]=useState(false);
+  const [syncing,setSyncing]=useState(false);
   const [exporting,setExporting]=useState(false);
   const [logoutBusy,setLogoutBusy]=useState(false);
   const [flash,setFlash]=useState('');
@@ -42,6 +43,32 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     catch(e){setError(e instanceof Error?e.message:'Unable to load reviews.')}
     finally{setLoading(false)}
   }
+
+  async function syncDailyFindings(showMessage=true){
+    if(syncing)return;
+    setSyncing(true);setError('');
+    try{
+      const [reviewsRes,leaderboardRes]=await Promise.all([
+        fetch('/api/reviews',{cache:'no-store'}),
+        fetch('/api/leaderboard',{cache:'no-store'})
+      ]);
+      const reviewsData=await reviewsRes.json();
+      if(!reviewsRes.ok)throw new Error(reviewsData.error||'Unable to load Daily Findings.');
+      setReviews(reviewsData.reviews||[]);
+
+      const leaderboardData=await leaderboardRes.json();
+      if(leaderboardRes.ok){
+        setCenterRanks(leaderboardData.centerRanks||[]);
+        setAgentRanks(leaderboardData.agentRanks||[]);
+        setLeaderboardKpi(Number(leaderboardData.kpi)||90);
+      }
+      if(showMessage)setFlash(`✓ Synced ${(reviewsData.reviews||[]).length} reviews from live Daily Findings.`);
+    }catch(e){
+      setError(e instanceof Error?e.message:'Unable to sync Daily Findings.');
+    }finally{
+      setSyncing(false);
+    }
+  }
   useEffect(()=>{load()},[]);
   useEffect(()=>{
     const loadLeaderboard=async()=>{
@@ -57,6 +84,14 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     };
     loadLeaderboard();
   },[]);
+
+  useEffect(()=>{
+    if(!admin)return;
+    const timer=window.setInterval(()=>{
+      if(document.visibilityState==='visible')syncDailyFindings(false);
+    },60000);
+    return()=>window.clearInterval(timer);
+  },[admin]);
 
   useEffect(()=>{
     let lastInteraction=Date.now();
@@ -252,7 +287,8 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     </aside>
     <main className="w-full p-4 pt-20 md:ml-64 md:p-8">
       <div className="mx-auto max-w-7xl">
-        <div className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-3xl font-bold">QA Coaching Daily Feedbacks</h1><p className="text-slate-500">Quality Assurance Coaching Follow-Up · {userName}</p></div><div className="flex flex-wrap gap-2">{admin&&<label aria-disabled={uploading} className={`focusable rounded-xl bg-sky-700 px-4 py-2 font-bold text-white ${uploading?'cursor-wait opacity-60':'cursor-pointer'}`}>{uploading?<TinyLoader label="Uploading..." />:'📤 Upload Daily Findings'}<input type="file" accept=".xlsx,.xls" disabled={uploading} className="hidden" onChange={e=>{const file=e.target.files?.[0];if(file)uploadDaily(file);e.currentTarget.value=''}}/></label>}<button onClick={downloadReviews} disabled={exporting} className="focusable rounded-xl border bg-white px-4 py-2 disabled:opacity-50">{exporting?<TinyLoader label="Preparing..." />:`⬇ Download ${admin?(filters.center==='All'?'All Centers':filters.center):center}`}</button><button onClick={load} disabled={loading} className="focusable rounded-xl border bg-white px-4 py-2 disabled:opacity-50">{loading?<TinyLoader label="Refreshing..." />:'Refresh'}</button></div></div>
+        <div className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-3xl font-bold">QA Coaching Daily Feedbacks</h1><p className="text-slate-500">Quality Assurance Coaching Follow-Up · {userName}</p></div><div className="flex flex-wrap gap-2">{admin&&<button onClick={()=>syncDailyFindings(true)} disabled={syncing||loading} className="focusable rounded-xl bg-sky-700 px-4 py-2 font-bold text-white disabled:cursor-wait disabled:opacity-60">{syncing?<TinyLoader label="Syncing..." />:'↻ Sync Daily Findings'}</button>}<button onClick={downloadReviews} disabled={exporting} className="focusable rounded-xl border bg-white px-4 py-2 disabled:opacity-50">{exporting?<TinyLoader label="Preparing..." />:`⬇ Download ${admin?(filters.center==='All'?'All Centers':filters.center):center}`}</button>{!admin&&<button onClick={load} disabled={loading} className="focusable rounded-xl border bg-white px-4 py-2 disabled:opacity-50">{loading?<TinyLoader label="Refreshing..." />:'Refresh'}</button>}</div></div>
+        {(loading||syncing)&&<div className="mt-4 flex items-center gap-2 rounded-xl bg-sky-50 px-3 py-2 text-sm text-sky-800"><TinyLoader label={loading?'Loading reviews...':'Syncing live Daily Findings...'} /></div>}
         {flash&&<div className="mt-4 rounded-xl bg-sky-50 p-3 text-sky-800">{flash}</div>}
         {error&&<div role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-red-700">{error}</div>}
         {!loading&&!error&&<div className={`mt-5 rounded-2xl p-4 font-semibold ${overdue?'bg-red-50 text-red-800':pending?'bg-amber-50 text-amber-800':'bg-green-50 text-green-800'}`}>{overdue?`🔴 Overdue Coaching — ${overdue} review${overdue===1?'':'s'} pending for more than 2 business days.`:pending?`⚠ Coaching Reminder — ${pending} QA review${pending===1?' is':'s are'} still waiting for coaching confirmation.`:'✅ All Coaching Completed — There are no pending coaching reviews in this view.'}</div>}
