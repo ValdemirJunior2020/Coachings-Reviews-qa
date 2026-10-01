@@ -45,15 +45,21 @@ export function verifyPassword(password:string, stored:string){
 export async function authenticate(email: string, password: string): Promise<SessionUser | null> {
   const normalized = email.trim().toLowerCase();
 
-  // Admin-managed accounts in Firestore take priority.
-  const snap=await db().collection('loginUsers').where('emailLower','==',normalized).limit(1).get();
-  if(!snap.empty){
-    const d=snap.docs[0].data();
-    if(d.active!==false && typeof d.passwordHash==='string' && verifyPassword(password,d.passwordHash)){
-      if(d.role==='admin') return {email:String(d.email),name:String(d.name||d.email),role:'admin'};
-      if(d.role==='center'&&d.center) return {email:String(d.email),name:String(d.name||d.center),role:'center',center:d.center as Center};
+  // Admin-managed accounts in Firestore take priority when Firestore is available.
+  // If Firestore is temporarily unavailable or misconfigured, fall back to the
+  // original Netlify environment logins instead of blocking every login.
+  try{
+    const snap=await db().collection('loginUsers').where('emailLower','==',normalized).limit(1).get();
+    if(!snap.empty){
+      const d=snap.docs[0].data();
+      if(d.active!==false && typeof d.passwordHash==='string' && verifyPassword(password,d.passwordHash)){
+        if(d.role==='admin') return {email:String(d.email),name:String(d.name||d.email),role:'admin'};
+        if(d.role==='center'&&d.center) return {email:String(d.email),name:String(d.name||d.center),role:'center',center:d.center as Center};
+      }
+      return null;
     }
-    return null;
+  }catch(error){
+    console.error('Managed login lookup failed; using environment login fallback.',error);
   }
 
   // Existing environment accounts remain available as a safe bootstrap/fallback.
