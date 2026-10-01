@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { SignJWT, jwtVerify } from 'jose';
-import { randomBytes, scryptSync, timingSafeEqual } from 'crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync, timingSafeEqual } from 'crypto';
 import { db } from './firebaseAdmin';
 import type { Center, SessionUser } from './types';
 
@@ -30,6 +30,30 @@ export function hashPassword(password:string){
   const salt=randomBytes(16).toString('hex');
   const hash=scryptSync(password,salt,64).toString('hex');
   return `${salt}:${hash}`;
+}
+
+function passwordKey(){
+  const value=process.env.AUTH_SECRET;
+  if(!value) throw new Error('AUTH_SECRET is not configured');
+  return createHash('sha256').update(value).digest();
+}
+
+export function encryptPassword(password:string){
+  const iv=randomBytes(12);
+  const cipher=createCipheriv('aes-256-gcm',passwordKey(),iv);
+  const encrypted=Buffer.concat([cipher.update(password,'utf8'),cipher.final()]);
+  const tag=cipher.getAuthTag();
+  return [iv.toString('base64'),tag.toString('base64'),encrypted.toString('base64')].join('.');
+}
+
+export function decryptPassword(stored:string){
+  try{
+    const [ivB64,tagB64,dataB64]=stored.split('.');
+    if(!ivB64||!tagB64||!dataB64)return null;
+    const decipher=createDecipheriv('aes-256-gcm',passwordKey(),Buffer.from(ivB64,'base64'));
+    decipher.setAuthTag(Buffer.from(tagB64,'base64'));
+    return Buffer.concat([decipher.update(Buffer.from(dataB64,'base64')),decipher.final()]).toString('utf8');
+  }catch{return null}
 }
 
 export function verifyPassword(password:string, stored:string){
