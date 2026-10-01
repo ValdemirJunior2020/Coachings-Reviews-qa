@@ -154,19 +154,43 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
   async function uploadDaily(file:File){
     if(uploading)return;
     setUploading(true);setFlash('Uploading Daily Findings...');
-    const body=new FormData();body.append('file',file);
     try{
-      const res=await fetch('/api/import',{method:'POST',body});
-      const contentType=res.headers.get('content-type')||'';
-      if(!contentType.includes('application/json')){
-        const text=await res.text();
-        console.error('Import returned non-JSON response:',res.status,text.slice(0,500));
-        setFlash(`Upload failed on the server (HTTP ${res.status}). Check the Netlify function log.`);
-        return;
+      let added=0,updated=0,skipped=0,scored=0;
+      const sections=[...CENTERS,'scores'] as const;
+
+      for(const section of sections){
+        if(section==='scores'){
+          setFlash('Uploading Daily Findings — Scores...');
+          const body=new FormData();body.append('file',file);
+          const res=await fetch('/api/import?section=scores',{method:'POST',body});
+          const contentType=res.headers.get('content-type')||'';
+          if(!contentType.includes('application/json'))throw new Error(`Scores upload failed (HTTP ${res.status}).`);
+          const d=await res.json();
+          if(!res.ok)throw new Error(d.error||`Scores upload failed (HTTP ${res.status}).`);
+          scored+=Number(d.scored||0);
+          continue;
+        }
+
+        let offset=0;
+        let done=false;
+        while(!done){
+          setFlash(`Uploading Daily Findings — ${section}...`);
+          const body=new FormData();body.append('file',file);
+          const res=await fetch(`/api/import?section=${encodeURIComponent(section)}&offset=${offset}&limit=150`,{method:'POST',body});
+          const contentType=res.headers.get('content-type')||'';
+          if(!contentType.includes('application/json'))throw new Error(`${section} upload failed on the server (HTTP ${res.status}).`);
+          const d=await res.json();
+          if(!res.ok)throw new Error(d.error||`${section} upload failed (HTTP ${res.status}).`);
+          added+=Number(d.added||0);
+          updated+=Number(d.updated||0);
+          skipped+=Number(d.skipped||0);
+          done=Boolean(d.done);
+          offset=Number(d.nextOffset||0);
+          if(!done&&offset<=0)throw new Error(`${section} upload stopped before completion.`);
+        }
       }
-      const d=await res.json();
-      if(!res.ok){setFlash(d.error||`Upload failed (HTTP ${res.status}).`);return}
-      setFlash(`✓ Upload complete — ${d.added} new · ${d.updated} updated · ${d.skipped} skipped.`);
+
+      setFlash(`✓ Upload complete — ${added} new · ${updated} updated · ${skipped} skipped · ${scored} scores.`);
       await load();
       try{const lr=await fetch('/api/leaderboard',{cache:'no-store'});const ld=await lr.json();if(lr.ok){setCenterRanks(ld.centerRanks||[]);setAgentRanks(ld.agentRanks||[]);setLeaderboardKpi(Number(ld.kpi)||90)}}catch{}
     }catch(e){
@@ -174,7 +198,8 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
       setFlash(e instanceof Error?`Upload failed: ${e.message}`:'Upload failed.');
     }finally{setUploading(false)}
   }
-  async function downloadReviews(){
+
+    async function downloadReviews(){
     if(exporting)return;
     setExporting(true);
     const selected=admin&&filters.center!=='All'?String(filters.center):'';
