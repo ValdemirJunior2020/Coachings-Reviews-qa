@@ -25,7 +25,7 @@ export default function AdminSettings({userName}:{userName:string}){
     setLoading(true);
     try{
       const res=await fetch('/api/admin/users',{cache:'no-store'});
-      const d=await res.json();
+      const text=await res.text();let d:any={};try{d=text?JSON.parse(text):{}}catch{d={error:`Server returned HTTP ${res.status}.`}}
       if(!res.ok) throw new Error(d.error||'Unable to load logins.');
       setUsers(d.users||[]);
     }catch(e){setFlash(e instanceof Error?e.message:'Unable to load logins.')}
@@ -47,7 +47,7 @@ export default function AdminSettings({userName}:{userName:string}){
     };
     const method=editing?'PATCH':'POST';
     const res=await fetch('/api/admin/users',{method,headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
-    const d=await res.json();
+    const text=await res.text();let d:any={};try{d=text?JSON.parse(text):{}}catch{d={error:`Server returned HTTP ${res.status}.`}}
     if(!res.ok){setFlash(d.error||'Unable to save login.');return}
     setFlash(editing?'✓ Login updated.':'✓ Login added.');
     setEditing(null);setAdding(false);
@@ -56,9 +56,18 @@ export default function AdminSettings({userName}:{userName:string}){
 
   async function toggle(user:LoginUser){
     const res=await fetch('/api/admin/users',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({...user,active:!user.active,password:''})});
-    const d=await res.json();
+    const text=await res.text();let d:any={};try{d=text?JSON.parse(text):{}}catch{d={error:`Server returned HTTP ${res.status}.`}}
     if(!res.ok){setFlash(d.error||'Unable to update login.');return}
     setFlash(user.active?'Login disabled.':'Login enabled.');
+    await load();
+  }
+
+  async function deleteUser(user:LoginUser){
+    if(!confirm(`Permanently delete login for ${user.name} (${user.email})? This cannot be undone.`))return;
+    const res=await fetch('/api/admin/users',{method:'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({id:user.id})});
+    const text=await res.text();let d:any={};try{d=text?JSON.parse(text):{}}catch{d={error:`Server returned HTTP ${res.status}.`}}
+    if(!res.ok){setFlash(d.error||'Unable to delete login.');return}
+    setFlash('✓ Login permanently deleted.');
     await load();
   }
 
@@ -84,7 +93,7 @@ export default function AdminSettings({userName}:{userName:string}){
 
         <div className="glass mt-6 overflow-hidden rounded-2xl">
           <div className="border-b p-4"><h2 className="font-bold">Managed Logins</h2><p className="text-sm text-slate-500">Passwords are never displayed. Use Edit to set a new password.</p></div>
-          {loading?<div className="p-8 text-center">Loading logins...</div>:users.length===0?<div className="p-8 text-center text-slate-500">No managed logins yet. Existing environment logins still work until you add managed accounts.</div>:<div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead className="bg-slate-50 text-left"><tr><th className="p-3">Name</th><th className="p-3">Email / Login</th><th className="p-3">Access</th><th className="p-3">Status</th><th className="p-3">Actions</th></tr></thead><tbody>{users.map(u=><tr key={u.id} className="border-t"><td className="p-3 font-semibold">{u.name}</td><td className="p-3">{u.email}</td><td className="p-3">{u.role==='admin'?'Admin':u.center}</td><td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${u.active?'bg-green-100 text-green-800':'bg-slate-200 text-slate-600'}`}>{u.active?'Active':'Disabled'}</span></td><td className="p-3"><div className="flex gap-2"><button onClick={()=>{setEditing(u);setAdding(false)}} className="focusable rounded-lg border bg-white px-3 py-1.5">Edit</button><button onClick={()=>toggle(u)} className="focusable rounded-lg border bg-white px-3 py-1.5">{u.active?'Disable':'Enable'}</button></div></td></tr>)}</tbody></table></div>}
+          {loading?<div className="p-8 text-center">Loading logins...</div>:users.length===0?<div className="p-8 text-center text-slate-500">No managed logins yet. Existing environment logins still work until you add managed accounts.</div>:<div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead className="bg-slate-50 text-left"><tr><th className="p-3">Name</th><th className="p-3">Email / Login</th><th className="p-3">Access</th><th className="p-3">Status</th><th className="p-3">Actions</th></tr></thead><tbody>{users.map(u=><tr key={u.id} className="border-t"><td className="p-3 font-semibold">{u.name}</td><td className="p-3">{u.email}</td><td className="p-3">{u.role==='admin'?'Admin':u.center}</td><td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${u.active?'bg-green-100 text-green-800':'bg-slate-200 text-slate-600'}`}>{u.active?'Active':'Disabled'}</span></td><td className="p-3"><div className="flex gap-2"><button onClick={()=>{setEditing(u);setAdding(false)}} className="focusable rounded-lg border bg-white px-3 py-1.5">Edit</button><button onClick={()=>toggle(u)} className="focusable rounded-lg border bg-white px-3 py-1.5">{u.active?'Disable':'Enable'}</button><button onClick={()=>deleteUser(u)} className="focusable rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 font-semibold text-red-700">Delete</button></div></td></tr>)}</tbody></table></div>}
         </div>
 
         {(adding||editing)&&<div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/40 p-4"><form onSubmit={save} className="glass w-full max-w-lg rounded-3xl p-6">
