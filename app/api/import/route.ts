@@ -21,6 +21,11 @@ function normalizeRows(headers:string[],rows:unknown[][]){
   const out:unknown[][]=[];
   const seen=new Set<string>();
   for(const row of rows){
+    const meaningful=row.some(v=>{
+      if(v===false||v===0||v==null)return false;
+      return s(v)!=='';
+    });
+    if(!meaningful)continue;
     const callId=s(row[callIx]);
     const itinerary=s(row[itineraryIx]);
     const badId=!callId||['not identified','n/a','na','none'].includes(callId.toLowerCase())||callId.includes('/');
