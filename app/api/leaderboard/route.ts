@@ -50,6 +50,8 @@ export async function GET(req:Request){
     sourceRows=snap.docs.map(doc=>doc.data() as Record<string,unknown>);
   }catch(firebaseError){
     console.error('leaderboard firebase failed; using Google Sheet fallback',firebaseError);
+  }
+  if(sourceRows.length===0){
     const sheetReviews=await getSheetReviews();
     sourceRows=sheetReviews.map(r=>({
       center:r.center,
@@ -107,7 +109,7 @@ export async function GET(req:Request){
   const rawStats=centers.map(center=>{
     const b=centerBuckets.get(center)!;
     const completionPct=b.total?b.coached/b.total*100:0;
-    const speedPct=b.coached?b.onTime/b.coached*100:0;
+    const speedPct=b.speedCount?b.onTime/b.speedCount*100:0;
     const avgSpeedDays=b.speedCount?b.speedDays/b.speedCount:null;
     const rawScore=completionPct*0.7+speedPct*0.3;
     return {name:center,center,rawScore,completionPct,speedPct,avgSpeedDays,total:b.total,coached:b.coached,pending:b.total-b.coached};
