@@ -51,16 +51,22 @@ export async function GET(req:Request){
   }catch(firebaseError){
     console.error('leaderboard firebase failed; using Google Sheet fallback',firebaseError);
   }
+  let dataSource:'firebase'|'google-sheets'|'unavailable'=sourceRows.length>0?'firebase':'unavailable';
   if(sourceRows.length===0){
-    const sheetReviews=await getSheetReviews();
-    sourceRows=sheetReviews.map(r=>({
-      center:r.center,
-      agent:r.agent,
-      finalScore:r.finalScore,
-      coached:r.coached,
-      qaDate:r.qaDate,
-      dateCoached:r.dateCoached,
-    }));
+    try{
+      const sheetReviews=await getSheetReviews();
+      sourceRows=sheetReviews.map(r=>({
+        center:r.center,
+        agent:r.agent,
+        finalScore:r.finalScore,
+        coached:r.coached,
+        qaDate:r.qaDate,
+        dateCoached:r.dateCoached,
+      }));
+      if(sourceRows.length>0)dataSource='google-sheets';
+    }catch(sheetError){
+      console.error('leaderboard Google Sheet recovery failed',sheetError);
+    }
   }
 
   const now=new Date();
@@ -157,6 +163,7 @@ export async function GET(req:Request){
     kpi:90,
     centerRankingFormula:'Last 30 days: 70% coaching completion + 30% coached within 2 business days, lightly adjusted for small sample sizes',
     centerRanks,
-    agentRanks
+    agentRanks,
+    dataSource
   });
 }
