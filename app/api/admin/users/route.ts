@@ -93,3 +93,21 @@ export async function PATCH(req:Request){
     return NextResponse.json({error:e instanceof Error?e.message:'Unable to update login.'},{status:500});
   }
 }
+
+
+export async function DELETE(req:Request){
+  const s=await getSession();
+  if(!s||s.role!=='admin') return NextResponse.json({error:'Admin access required.'},{status:403});
+  try{
+    const b=await req.json();
+    const id=String(b.id||'');
+    if(!id) return NextResponse.json({error:'Login id is required.'},{status:400});
+    const ref=db().collection('loginUsers').doc(id);
+    const snap=await ref.get();
+    if(!snap.exists) return NextResponse.json({error:'Login not found.'},{status:404});
+    await ref.delete();
+    return NextResponse.json({ok:true});
+  }catch(e){
+    return NextResponse.json({error:e instanceof Error?e.message:'Unable to delete login.'},{status:500});
+  }
+}
