@@ -32,43 +32,68 @@ function normalizeRows(headers:string[],rows:unknown[][]){
   return {rows:out,skipped};
 }
 
-type ImportJob={center:Center;headers:string[];rows:unknown[][]};
-
-async function runJobs(jobs:ImportJob[],concurrency=3){
-  let next=0;
-  let added=0,updated=0,skipped=0;
-  const workers=Array.from({length:Math.min(concurrency,jobs.length)},async()=>{
-    while(true){
-      const i=next++;
-      if(i>=jobs.length)return;
-      const job=jobs[i];
-      const result=await importCenterRows(job.center,job.headers,job.rows);
-      added+=Number(result.added||0);
-      updated+=Number(result.updated||0);
-      skipped+=Number(result.skipped||0);
-    }
-  });
-  await Promise.all(workers);
-  return {added,updated,skipped};
-}
-
 export async function POST(req:Request){
   const session=await getSession();
   if(!session||session.role!=='admin')return NextResponse.json({error:'Admin access required.'},{status:403});
   try{
+    const url=new URL(req.url);
+    const section=url.searchParams.get('section')||'all';
+    const offset=Math.max(0,Number(url.searchParams.get('offset')||0));
+    const limit=Math.min(250,Math.max(25,Number(url.searchParams.get('limit')||150)));
+
     const form=await req.formData();
     const file=form.get('file');
     if(!(file instanceof File))return NextResponse.json({error:'Choose an Excel file.'},{status:400});
     if(!/\.xlsx?$/i.test(file.name))return NextResponse.json({error:'Only .xlsx or .xls files are accepted.'},{status:400});
 
     const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true});
-    let skipped=0;
-    const jobs:ImportJob[]=[];
 
-    // Larger chunks + limited parallelism keep Netlify from timing out while
-    // avoiding a flood of requests to the backing Daily-Findings database.
-    const BATCH=500;
+    if(section==='scores'){
+      const scoreWs=wb.Sheets['Scores'];
+      if(!scoreWs)return NextResponse.json({added:0,updated:0,skipped:0,scored:0,done:true,section});
+      const scoreRaw=XLSX.utils.sheet_to_json<unknown[]>(scoreWs,{header:1,defval:''});
+      const result=await replaceScores(scoreRaw);
+      return NextResponse.json({added:0,updated:0,skipped:0,scored:Number(result.written||0),done:true,section});
+    }
 
+    if(section!=='all'&&centers.includes(section as Center)){
+      const center=section as Center;
+      const ws=wb.Sheets[center];
+      if(!ws)return NextResponse.json({added:0,updated:0,skipped:0,scored:0,done:true,section:center,total:0,nextOffset:null});
+
+      const raw=XLSX.utils.sheet_to_json<unknown[]>(ws,{header:1,defval:''});
+      const hi=raw.findIndex(r=>r.some(v=>s(v).toLowerCase()==='call id'));
+      if(hi<0)return NextResponse.json({added:0,updated:0,skipped:0,scored:0,done:true,section:center,total:0,nextOffset:null});
+
+      const headers=raw[hi].map(s);
+      const normalized=normalizeRows(headers,raw.slice(hi+1));
+      const chunk=normalized.rows.slice(offset,offset+limit);
+
+      if(!chunk.length){
+        return NextResponse.json({
+          added:0,updated:0,skipped:offset===0?normalized.skipped:0,scored:0,
+          done:true,section:center,total:normalized.rows.length,nextOffset:null
+        });
+      }
+
+      const result=await importCenterRows(center,headers,chunk);
+      const next=offset+chunk.length;
+      const done=next>=normalized.rows.length;
+      return NextResponse.json({
+        added:Number(result.added||0),
+        updated:Number(result.updated||0),
+        skipped:Number(result.skipped||0)+(offset===0?normalized.skipped:0),
+        scored:0,
+        done,
+        section:center,
+        total:normalized.rows.length,
+        processed:chunk.length,
+        nextOffset:done?null:next
+      });
+    }
+
+    // Backward-compatible small-file path.
+    let added=0,updated=0,skipped=0;
     for(const center of centers){
       const ws=wb.Sheets[center];
       if(!ws)continue;
@@ -78,30 +103,12 @@ export async function POST(req:Request){
       const headers=raw[hi].map(s);
       const normalized=normalizeRows(headers,raw.slice(hi+1));
       skipped+=normalized.skipped;
-      for(let i=0;i<normalized.rows.length;i+=BATCH){
-        jobs.push({center,headers,rows:normalized.rows.slice(i,i+BATCH)});
-      }
+      const result=await importCenterRows(center,headers,normalized.rows.slice(0,limit));
+      added+=Number(result.added||0);
+      updated+=Number(result.updated||0);
+      skipped+=Number(result.skipped||0);
     }
-
-    const imported=await runJobs(jobs,3);
-    skipped+=imported.skipped;
-
-    let scored=0;
-    const scoreWs=wb.Sheets['Scores'];
-    if(scoreWs){
-      const scoreRaw=XLSX.utils.sheet_to_json<unknown[]>(scoreWs,{header:1,defval:''});
-      const result=await replaceScores(scoreRaw);
-      scored=Number(result.written||0);
-    }
-
-    return NextResponse.json({
-      added:imported.added,
-      updated:imported.updated,
-      skipped,
-      scored,
-      chunks:jobs.length,
-      source:'google-sheet'
-    });
+    return NextResponse.json({added,updated,skipped,scored:0,done:true,source:'google-sheet'});
   }catch(e){
     console.error('import',e);
     return NextResponse.json({error:e instanceof Error?e.message:'Import failed.'},{status:500});
