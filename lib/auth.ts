@@ -66,6 +66,30 @@ export function verifyPassword(password:string, stored:string){
   }catch{return false}
 }
 
+function passwordEncryptionKey(){
+  const raw=process.env.AUTH_SECRET;
+  if(!raw) throw new Error('AUTH_SECRET is not configured');
+  return createHash('sha256').update(raw).digest();
+}
+
+export function encryptPassword(password:string){
+  const iv=randomBytes(12);
+  const cipher=createCipheriv('aes-256-gcm',passwordEncryptionKey(),iv);
+  const encrypted=Buffer.concat([cipher.update(password,'utf8'),cipher.final()]);
+  const tag=cipher.getAuthTag();
+  return [iv.toString('base64'),tag.toString('base64'),encrypted.toString('base64')].join('.');
+}
+
+export function decryptPassword(value:string){
+  try{
+    const [iv64,tag64,data64]=value.split('.');
+    if(!iv64||!tag64||!data64)return null;
+    const decipher=createDecipheriv('aes-256-gcm',passwordEncryptionKey(),Buffer.from(iv64,'base64'));
+    decipher.setAuthTag(Buffer.from(tag64,'base64'));
+    return Buffer.concat([decipher.update(Buffer.from(data64,'base64')),decipher.final()]).toString('utf8');
+  }catch{return null}
+}
+
 export async function authenticate(email: string, password: string): Promise<SessionUser | null> {
   const normalized = email.trim().toLowerCase();
 
