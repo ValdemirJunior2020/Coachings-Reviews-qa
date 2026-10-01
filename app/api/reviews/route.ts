@@ -50,11 +50,17 @@ export async function GET(req:Request){
     if(s.role==='center') center=s.center;
     else if(q) center=map[q.toLowerCase()];
     try{
-      return NextResponse.json({reviews:await getFirebaseReviews(center),source:'firebase'});
-    }catch(firebaseError){
-      console.error('reviews firebase failed; using Google Sheet fallback',firebaseError);
+      const firebaseReviews=await getFirebaseReviews(center);
+      if(firebaseReviews.length>0){
+        return NextResponse.json({reviews:firebaseReviews,source:'firebase'});
+      }
+      console.warn('Firebase returned zero reviews; using Daily Findings recovery source.');
       const reviews=await getSheetReviews(center);
-      return NextResponse.json({reviews,source:'google-sheets',warning:'Firebase unavailable; loaded coaching data from the Daily Findings Google Sheet.'});
+      return NextResponse.json({reviews,source:'google-sheets-recovery',warning:'Firebase returned no reviews; coaching history was recovered from the Daily Findings sheet and its saved coaching row highlights.'});
+    }catch(firebaseError){
+      console.error('reviews firebase failed; using Google Sheet recovery',firebaseError);
+      const reviews=await getSheetReviews(center);
+      return NextResponse.json({reviews,source:'google-sheets-recovery',warning:'Firebase unavailable; coaching history was recovered from the Daily Findings sheet and its saved coaching row highlights.'});
     }
   }catch(e){console.error('reviews',e);return NextResponse.json({error:'Unable to load coaching reviews from Firebase or Google Sheets.'},{status:503})}
 }
