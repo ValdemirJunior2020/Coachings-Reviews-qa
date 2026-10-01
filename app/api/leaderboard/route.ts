@@ -32,9 +32,14 @@ function businessDaysBetween(start:Date,end:Date){
   return days;
 }
 
-export async function GET(){
+export async function GET(req:Request){
   const session=await getSession();
   if(!session)return NextResponse.json({error:'Session expired.'},{status:401});
+
+  const previewRaw=new URL(req.url).searchParams.get('previewCenter') as Center|null;
+  const previewCenter=session.role==='admin'&&previewRaw&&centers.includes(previewRaw)?previewRaw:undefined;
+  const effectiveRole: 'admin'|'center' = previewCenter?'center':session.role;
+  const effectiveCenter=previewCenter||session.center;
 
   const snap=await db().collection('reviews')
     .select('center','agent','finalScore','coached','qaDate','dateCoached')
@@ -57,7 +62,6 @@ export async function GET(){
     const center=d.center as Center;
     if(!centers.includes(center))continue;
 
-
     const qaDate=parseDate(d.qaDate);
     if(!qaDate||qaDate<cutoff||qaDate>now)continue;
 
@@ -66,9 +70,8 @@ export async function GET(){
 
     if(Boolean(d.coached)){
       cb.coached++;
-      const qaDate=parseDate(d.qaDate);
       const coachedDate=parseDate(d.dateCoached);
-      if(qaDate&&coachedDate){
+      if(coachedDate){
         const speed=businessDaysBetween(qaDate,coachedDate);
         cb.speedDays+=speed;
         cb.speedCount++;
@@ -92,17 +95,7 @@ export async function GET(){
     const speedPct=b.coached?b.onTime/b.coached*100:0;
     const avgSpeedDays=b.speedCount?b.speedDays/b.speedCount:null;
     const rawScore=completionPct*0.7+speedPct*0.3;
-    return {
-      name:center,
-      center,
-      rawScore,
-      completionPct,
-      speedPct,
-      avgSpeedDays,
-      total:b.total,
-      coached:b.coached,
-      pending:b.total-b.coached,
-    };
+    return {name:center,center,rawScore,completionPct,speedPct,avgSpeedDays,total:b.total,coached:b.coached,pending:b.total-b.coached};
   });
 
   const totalReviews=rawStats.reduce((sum,r)=>sum+r.total,0);
@@ -115,21 +108,17 @@ export async function GET(){
     const adjustedScore=r.total
       ? (r.rawScore*r.total+globalRawScore*PRIOR_REVIEWS)/(r.total+PRIOR_REVIEWS)
       : 0;
-    return {
-      ...r,
-      avg:adjustedScore,
-      provisional:r.total<30,
-    };
+    return {...r,avg:adjustedScore,provisional:r.total<30};
   }).sort((a,b)=>b.avg-a.avg||b.completionPct-a.completionPct||b.speedPct-a.speedPct||a.name.localeCompare(b.name))
     .map((r,i)=>({...r,rank:i+1}));
 
   const centerRanks=rawCenterRanks.map(r=>{
-    const canSeeDetails=session.role==='admin'||session.center===r.center;
+    const canSeeDetails=effectiveRole==='admin'||effectiveCenter===r.center;
     return {
       rank:r.rank,
-      center:session.role==='admin'||session.center===r.center?r.center:null,
-      name:session.role==='admin'||session.center===r.center?r.center:'Other Center',
-      isOwn:session.center===r.center,
+      center:effectiveRole==='admin'||effectiveCenter===r.center?r.center:null,
+      name:effectiveRole==='admin'||effectiveCenter===r.center?r.center:'Other Center',
+      isOwn:effectiveCenter===r.center,
       coachingScore:canSeeDetails?Math.round(r.avg*10)/10:null,
       completionPct:canSeeDetails?Math.round(r.completionPct*10)/10:null,
       speedPct:canSeeDetails?Math.round(r.speedPct*10)/10:null,
@@ -142,7 +131,7 @@ export async function GET(){
   });
 
   const visibleAgents=[...agentBuckets.values()]
-    .filter(a=>session.role==='admin'||a.center===session.center)
+    .filter(a=>effectiveRole==='admin'||a.center===effectiveCenter)
     .map(a=>({name:a.name,center:a.center,avg:a.sum/a.count,count:a.count}));
 
   const agentRanks=ranked(visibleAgents).map(r=>({...r,avg:Math.round(r.avg*10)/10}));
