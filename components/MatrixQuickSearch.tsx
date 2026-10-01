@@ -50,10 +50,10 @@ function RuleCard({rule,favorite,onToggle}:{rule:MatrixRule;favorite:boolean;onT
           <button
             type="button"
             onClick={e=>{e.preventDefault();e.stopPropagation();onToggle(rule)}}
-            className={`focusable rounded-lg px-2 py-1 text-base leading-none ${favorite?'text-amber-500':'text-slate-300 hover:text-amber-500'}`}
+            className={`focusable rounded-full border px-2.5 py-1 text-[11px] font-bold transition ${favorite?'border-amber-300 bg-amber-50 text-amber-700':'border-slate-200 bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700'}`}
             aria-label={favorite?'Remove from favorites':'Add to favorites'}
             title={favorite?'Remove from favorites':'Add to favorites'}
-          >{favorite?'★':'☆'}</button>
+          >{favorite?'★ Saved':'☆ Favorite'}</button>
           <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${rule.s==='Note'?'bg-amber-50 text-amber-800':rule.s==='Voice'?'bg-sky-50 text-sky-800':'bg-violet-50 text-violet-800'}`}>{rule.s}</span>
         </div>
       </div>
