@@ -38,6 +38,7 @@ function toReview(data: Record<string, unknown>): Review {
     finalScore: typeof data.finalScore==='number' ? data.finalScore : null,
     scorePassFail: String(data.scorePassFail ?? ''),
     scoreMarkdowns: String(data.scoreMarkdowns ?? ''),
+    scoreIssues: Array.isArray(data.scoreIssues) ? data.scoreIssues.map(String) : [],
   };
 }
 
