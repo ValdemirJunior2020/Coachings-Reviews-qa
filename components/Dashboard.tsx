@@ -3,6 +3,7 @@
 import {useEffect,useMemo,useState} from 'react';
 import {filterReviews,type ReviewFilters} from '@/lib/filter';
 import type {Center,Review,ReviewStatus} from '@/lib/types';
+import TinyLoader from '@/components/TinyLoader';
 
 const CENTERS:Center[]=['Buwelo','WNS','Concentrix','Telus'];
 type PresenceUser={id:string;email:string;name:string;role:'admin'|'center';center:Center|'';page:string;status:'online'|'idle'|'offline';lastSeen:string};
@@ -21,6 +22,10 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
   const [modal,setModal]=useState<Review|null>(null);
   const [detail,setDetail]=useState<Review|null>(null);
   const [saving,setSaving]=useState(false);
+  const [reopeningCallId,setReopeningCallId]=useState('');
+  const [uploading,setUploading]=useState(false);
+  const [exporting,setExporting]=useState(false);
+  const [logoutBusy,setLogoutBusy]=useState(false);
   const [flash,setFlash]=useState('');
   const [menuOpen,setMenuOpen]=useState(false);
   const [viewMode,setViewMode]=useState<'cards'|'sheet'>('cards');
@@ -124,10 +129,14 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
   }
   async function reopen(r:Review){
     if(!confirm(`Reopen coaching for ${r.agent}? This will move it back to Pending.`))return;
-    const res=await fetch('/api/coaching',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({center:r.center,callId:r.callId,coached:false})});
-    const d=await res.json();
-    if(res.ok){setReviews(x=>x.map(v=>v.callId===d.review.callId&&v.center===d.review.center?d.review:v));setFlash(d.sheetSynced?'Coaching reopened — Google Sheet row reset.':`Coaching reopened. Google Sheet reset needs attention: ${d.sheetWarning||'sync failed.'}`);try{const lr=await fetch('/api/leaderboard',{cache:'no-store'});const ld=await lr.json();if(lr.ok){setCenterRanks(ld.centerRanks||[]);setAgentRanks(ld.agentRanks||[])}}catch{}}
-    else setFlash(d.error||'Reopen failed.');
+    setReopeningCallId(r.callId);setFlash('');
+    try{
+      const res=await fetch('/api/coaching',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({center:r.center,callId:r.callId,coached:false})});
+      const text=await res.text();let d:any={};try{d=text?JSON.parse(text):{}}catch{}
+      if(res.ok){setReviews(x=>x.map(v=>v.callId===d.review.callId&&v.center===d.review.center?d.review:v));setFlash(d.sheetSynced?'Coaching reopened — Google Sheet row reset.':`Coaching reopened. Google Sheet reset needs attention: ${d.sheetWarning||'sync failed.'}`);try{const lr=await fetch('/api/leaderboard',{cache:'no-store'});const ld=await lr.json();if(lr.ok){setCenterRanks(ld.centerRanks||[]);setAgentRanks(ld.agentRanks||[])}}catch{}}
+      else setFlash(d.error||'Reopen failed.');
+    }catch(e){setFlash(e instanceof Error?e.message:'Reopen failed.')}
+    finally{setReopeningCallId('')}
   }
   async function submitDispute(e:React.FormEvent<HTMLFormElement>){
     e.preventDefault(); if(!disputeModal)return; setSaving(true);setFlash('');
@@ -143,7 +152,8 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     finally{setSaving(false)}
   }
   async function uploadDaily(file:File){
-    setFlash('Uploading Daily Findings...');
+    if(uploading)return;
+    setUploading(true);setFlash('Uploading Daily Findings...');
     const body=new FormData();body.append('file',file);
     try{
       const res=await fetch('/api/import',{method:'POST',body});
@@ -162,13 +172,40 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     }catch(e){
       console.error('Upload failed',e);
       setFlash(e instanceof Error?`Upload failed: ${e.message}`:'Upload failed.');
+    }finally{setUploading(false)}
+  }
+  async function downloadReviews(){
+    if(exporting)return;
+    setExporting(true);
+    const selected=admin&&filters.center!=='All'?String(filters.center):'';
+    const path='/api/export'+(selected?`?center=${encodeURIComponent(selected)}`:'');
+    try{
+      const res=await fetch(path);
+      if(!res.ok)throw new Error('Unable to prepare download.');
+      const blob=await res.blob();
+      const disposition=res.headers.get('content-disposition')||'';
+      const match=disposition.match(/filename="?([^";]+)"?/i);
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url;a.download=match?.[1]||'QA-Coaching-Reviews.xlsx';
+      document.body.appendChild(a);a.click();a.remove();
+      URL.revokeObjectURL(url);
+    }catch(e){setFlash(e instanceof Error?e.message:'Unable to prepare download.')}
+    finally{setExporting(false)}
+  }
+  async function logout(){
+    if(logoutBusy)return;
+    setLogoutBusy(true);
+    try{
+      try{await fetch('/api/presence',{method:'DELETE',keepalive:true})}catch{}
+      const res=await fetch('/api/logout',{method:'POST'});
+      if(!res.ok)throw new Error('Unable to log out.');
+      location.href='/';
+    }catch(e){
+      setFlash(e instanceof Error?e.message:'Unable to log out.');
+      setLogoutBusy(false);
     }
   }
-  function downloadReviews(){
-    const selected=admin&&filters.center!=='All'?String(filters.center):'';
-    location.href='/api/export'+(selected?`?center=${encodeURIComponent(selected)}`:'');
-  }
-  async function logout(){try{await fetch('/api/presence',{method:'DELETE',keepalive:true})}catch{}await fetch('/api/logout',{method:'POST'});location.href='/'}
 
   const nav=<nav className="mt-8 grid gap-2 text-sm">
     <button onClick={()=>{setViewMode('cards');chooseStatus('All')}} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">Dashboard / All Reviews</button>
@@ -178,7 +215,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     <button onClick={()=>chooseStatus('Completed')} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">Completed Coaching</button>
     <button onClick={()=>{setDisputedOnly(true);patch('status','All');setViewMode('cards');setMenuOpen(false)}} className="focusable rounded-lg p-2 text-left hover:bg-orange-50">🟠 TL Disputed{admin?` (${disputed})`:''}</button>
     {admin&&<button onClick={()=>location.href='/admin/settings'} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">⚙ Admin / Settings</button>}
-    <button onClick={logout} className="focusable rounded-lg p-2 text-left text-red-700 hover:bg-red-50">Logout</button>
+    <button onClick={logout} disabled={logoutBusy} className="focusable rounded-lg p-2 text-left text-red-700 hover:bg-red-50 disabled:opacity-50">{logoutBusy?<TinyLoader label="Logging out..." />:'Logout'}</button>
   </nav>;
 
   return <div className="min-h-screen md:flex">
@@ -190,7 +227,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     </aside>
     <main className="w-full p-4 pt-20 md:ml-64 md:p-8">
       <div className="mx-auto max-w-7xl">
-        <div className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-3xl font-bold">QA Coaching Daily Feedbacks</h1><p className="text-slate-500">Quality Assurance Coaching Follow-Up · {userName}</p></div><div className="flex flex-wrap gap-2">{admin&&<label className="focusable cursor-pointer rounded-xl bg-sky-700 px-4 py-2 font-bold text-white">📤 Upload Daily Findings<input type="file" accept=".xlsx,.xls" className="hidden" onChange={e=>{const file=e.target.files?.[0];if(file)uploadDaily(file);e.currentTarget.value=''}}/></label>}<button onClick={downloadReviews} className="focusable rounded-xl border bg-white px-4 py-2">⬇ Download {admin?(filters.center==='All'?'All Centers':filters.center):center}</button><button onClick={load} className="focusable rounded-xl border bg-white px-4 py-2">Refresh</button></div></div>
+        <div className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-3xl font-bold">QA Coaching Daily Feedbacks</h1><p className="text-slate-500">Quality Assurance Coaching Follow-Up · {userName}</p></div><div className="flex flex-wrap gap-2">{admin&&<label aria-disabled={uploading} className={`focusable rounded-xl bg-sky-700 px-4 py-2 font-bold text-white ${uploading?'cursor-wait opacity-60':'cursor-pointer'}`}>{uploading?<TinyLoader label="Uploading..." />:'📤 Upload Daily Findings'}<input type="file" accept=".xlsx,.xls" disabled={uploading} className="hidden" onChange={e=>{const file=e.target.files?.[0];if(file)uploadDaily(file);e.currentTarget.value=''}}/></label>}<button onClick={downloadReviews} disabled={exporting} className="focusable rounded-xl border bg-white px-4 py-2 disabled:opacity-50">{exporting?<TinyLoader label="Preparing..." />:`⬇ Download ${admin?(filters.center==='All'?'All Centers':filters.center):center}`}</button><button onClick={load} disabled={loading} className="focusable rounded-xl border bg-white px-4 py-2 disabled:opacity-50">{loading?<TinyLoader label="Refreshing..." />:'Refresh'}</button></div></div>
         {flash&&<div className="mt-4 rounded-xl bg-sky-50 p-3 text-sky-800">{flash}</div>}
         {error&&<div role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-red-700">{error}</div>}
         {!loading&&!error&&<div className={`mt-5 rounded-2xl p-4 font-semibold ${overdue?'bg-red-50 text-red-800':pending?'bg-amber-50 text-amber-800':'bg-green-50 text-green-800'}`}>{overdue?`🔴 Overdue Coaching — ${overdue} review${overdue===1?'':'s'} pending for more than 2 business days.`:pending?`⚠ Coaching Reminder — ${pending} QA review${pending===1?' is':'s are'} still waiting for coaching confirmation.`:'✅ All Coaching Completed — There are no pending coaching reviews in this view.'}</div>}
@@ -276,7 +313,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
               <thead className="sticky top-0 bg-slate-100 text-left">
                 <tr>{['Date','Booking Itinerary number','Call center',"Agent's name",'Call ID','What guest needed?','What happened?','The Correct Matrix Process','Business impact','Quick Coaching','Call Lenght','Date-of-the-call','Call Month','Coached?','Date Coached','Coached By','Coaching Response / Notes','Confirmation Link'].map(h=><th key={h} className="border-b border-r p-3 font-bold text-slate-700">{h}</th>)}</tr>
               </thead>
-              <tbody>{loading?<tr><td colSpan={18} className="p-8 text-center">Loading coaching reviews...</td></tr>:filtered.length===0?<tr><td colSpan={18} className="p-8 text-center">No reviews match these filters.</td></tr>:filtered.map(r=><tr key={`sheet-${r.center}-${r.callId}`} className={`align-top ${r.tlDisputed?'bg-orange-100 hover:bg-orange-200':r.coached?'bg-green-50 hover:bg-green-100':'hover:bg-sky-50/50'}`}>
+              <tbody>{loading?<tr><td colSpan={18} className="p-8 text-center"><TinyLoader label="Loading coaching reviews..." /></td></tr>:filtered.length===0?<tr><td colSpan={18} className="p-8 text-center">No reviews match these filters.</td></tr>:filtered.map(r=><tr key={`sheet-${r.center}-${r.callId}`} className={`align-top ${r.tlDisputed?'bg-orange-100 hover:bg-orange-200':r.coached?'bg-green-50 hover:bg-green-100':'hover:bg-sky-50/50'}`}>
                 <td className="border-b border-r p-3 whitespace-nowrap">{r.qaDate||'—'}</td>
                 <td className="border-b border-r p-3 whitespace-nowrap">{r.itinerary||'—'}</td>
                 <td className="border-b border-r p-3 whitespace-nowrap">{r.center}</td>
@@ -298,7 +335,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
               </tr>)}</tbody>
             </table>
           </div>
-        </div>:<div className="mt-5">{loading?<div className="glass rounded-2xl p-8 text-center">Loading coaching reviews...</div>:filtered.length===0?<div className="glass rounded-2xl p-8 text-center">No reviews match these filters.</div>:<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{filtered.map(r=><article key={`${r.center}-${r.callId}`} className={`glass rounded-2xl p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${r.positive?'positive':'correction'}`}>
+        </div>:<div className="mt-5">{loading?<div className="glass rounded-2xl p-8 text-center"><TinyLoader label="Loading coaching reviews..." /></div>:filtered.length===0?<div className="glass rounded-2xl p-8 text-center">No reviews match these filters.</div>:<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{filtered.map(r=><article key={`${r.center}-${r.callId}`} className={`glass rounded-2xl p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${r.positive?'positive':'correction'}`}>
           <button onClick={()=>setDetail(r)} className="w-full text-left">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0"><div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{r.center}</div><h3 className="truncate text-base font-bold">{r.agent}</h3><div className="mt-1 truncate text-xs text-slate-500">{r.itinerary||'No itinerary'}</div></div>
@@ -313,7 +350,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
             <div className="mt-3"><div className="text-xs font-bold uppercase tracking-wide text-slate-500">Quick Coaching</div><p className="mt-1 line-clamp-3 text-sm leading-5 text-slate-700">{r.quickCoaching||'No coaching note.'}</p></div>
             <div className="mt-3 text-xs font-semibold text-sky-700">Open full review →</div>
           </button>
-          <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">{r.coached?<><button onClick={()=>setModal(r)} className="focusable flex-1 rounded-xl border bg-white px-3 py-2 text-sm font-semibold">Edit Coaching</button>{admin&&<button onClick={()=>reopen(r)} className="focusable rounded-xl border border-red-200 bg-white px-3 py-2 text-sm text-red-700">Reopen</button>}</>:<button onClick={()=>setModal(r)} className="focusable flex-1 rounded-xl bg-sky-700 px-3 py-2 text-sm font-bold text-white">Mark as Coached</button>}{!admin&&!r.tlDisputed&&<button onClick={()=>setDisputeModal(r)} className="focusable rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-sm font-bold text-orange-800">Dispute QA Review</button>}{!admin&&r.tlDisputed&&<span className="w-full rounded-xl bg-orange-50 px-3 py-2 text-center text-sm font-bold text-orange-800">🟠 Dispute sent to QA Admin</span>}</div>
+          <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">{r.coached?<><button onClick={()=>setModal(r)} className="focusable flex-1 rounded-xl border bg-white px-3 py-2 text-sm font-semibold">Edit Coaching</button>{admin&&<button onClick={()=>reopen(r)} disabled={reopeningCallId===r.callId} className="focusable rounded-xl border border-red-200 bg-white px-3 py-2 text-sm text-red-700 disabled:opacity-50">{reopeningCallId===r.callId?<TinyLoader label="Reopening..." />:'Reopen'}</button>}</>:<button onClick={()=>setModal(r)} className="focusable flex-1 rounded-xl bg-sky-700 px-3 py-2 text-sm font-bold text-white">Mark as Coached</button>}{!admin&&!r.tlDisputed&&<button onClick={()=>setDisputeModal(r)} className="focusable rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-sm font-bold text-orange-800">Dispute QA Review</button>}{!admin&&r.tlDisputed&&<span className="w-full rounded-xl bg-orange-50 px-3 py-2 text-center text-sm font-bold text-orange-800">🟠 Dispute sent to QA Admin</span>}</div>
         </article>)}</div>}</div>}
       </div>
     </main>
@@ -326,8 +363,8 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
       <div className="mt-5 flex justify-end"><button onClick={()=>{setDetail(null);setModal(detail)}} className="focusable rounded-xl bg-sky-700 px-4 py-2 font-bold text-white">{detail.coached?'Edit Coaching':'Mark as Coached'}</button></div>
     </div></div>}
 
-    {modal&&<div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/35 p-4"><form onSubmit={save} className="glass w-full max-w-lg rounded-3xl p-6"><h2 className="text-xl font-bold">{modal.coached?'Edit Coaching':'Mark as Coached'}</h2><p className="mt-1 text-sm text-slate-500">{modal.agent} · {modal.callId}</p><label className="mt-4 block font-semibold">Coached By<input name="coachedBy" defaultValue={modal.coachedBy} required className="focusable mt-1 w-full rounded-xl border p-3"/></label><label className="mt-4 block font-semibold">Date Coached<input name="dateCoached" type="date" defaultValue={modal.dateCoached||new Date().toISOString().slice(0,10)} required className="focusable mt-1 w-full rounded-xl border p-3"/></label><label className="mt-4 block font-semibold">Coaching Response / Notes<textarea name="notes" defaultValue={modal.coachingNotes} rows={4} className="focusable mt-1 w-full rounded-xl border p-3"/></label><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={()=>setModal(null)} className="focusable rounded-xl border bg-white px-4 py-2">Cancel</button><button disabled={saving} className="focusable rounded-xl bg-sky-700 px-4 py-2 font-bold text-white disabled:opacity-50">{saving?'Saving coaching...':'Confirm & Save'}</button></div></form></div>}
+    {modal&&<div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/35 p-4"><form onSubmit={save} className="glass w-full max-w-lg rounded-3xl p-6"><h2 className="text-xl font-bold">{modal.coached?'Edit Coaching':'Mark as Coached'}</h2><p className="mt-1 text-sm text-slate-500">{modal.agent} · {modal.callId}</p><label className="mt-4 block font-semibold">Coached By<input name="coachedBy" defaultValue={modal.coachedBy} required className="focusable mt-1 w-full rounded-xl border p-3"/></label><label className="mt-4 block font-semibold">Date Coached<input name="dateCoached" type="date" defaultValue={modal.dateCoached||new Date().toISOString().slice(0,10)} required className="focusable mt-1 w-full rounded-xl border p-3"/></label><label className="mt-4 block font-semibold">Coaching Response / Notes<textarea name="notes" defaultValue={modal.coachingNotes} rows={4} className="focusable mt-1 w-full rounded-xl border p-3"/></label><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={()=>setModal(null)} className="focusable rounded-xl border bg-white px-4 py-2">Cancel</button><button disabled={saving} className="focusable rounded-xl bg-sky-700 px-4 py-2 font-bold text-white disabled:opacity-50">{saving?<TinyLoader label="Saving coaching..." />:'Confirm & Save'}</button></div></form></div>}
 
-    {disputeModal&&<div role="dialog" aria-modal="true" className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/40 p-4"><form onSubmit={submitDispute} className="glass w-full max-w-lg rounded-3xl p-6"><div className="text-sm font-bold text-orange-700">🟠 TL DISPUTE</div><h2 className="mt-1 text-xl font-bold">Dispute QA Review</h2><p className="mt-1 text-sm text-slate-500">{disputeModal.agent} · {disputeModal.callId}</p><p className="mt-4 rounded-xl bg-orange-50 p-3 text-sm text-orange-900">Use this when the TL disagrees with the QA finding. The original QA review will not be changed; QA Admin will see the dispute for review.</p><label className="mt-4 block font-semibold">TL Name<input name="disputeBy" defaultValue={userName} required className="focusable mt-1 w-full rounded-xl border p-3"/></label><label className="mt-4 block font-semibold">Why do you disagree?<textarea name="reason" required minLength={10} rows={5} placeholder="Explain what you believe should be reviewed..." className="focusable mt-1 w-full rounded-xl border p-3"/></label><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={()=>setDisputeModal(null)} className="focusable rounded-xl border bg-white px-4 py-2">Cancel</button><button disabled={saving} className="focusable rounded-xl bg-orange-600 px-4 py-2 font-bold text-white disabled:opacity-50">{saving?'Submitting...':'Submit TL Dispute'}</button></div></form></div>}
+    {disputeModal&&<div role="dialog" aria-modal="true" className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/40 p-4"><form onSubmit={submitDispute} className="glass w-full max-w-lg rounded-3xl p-6"><div className="text-sm font-bold text-orange-700">🟠 TL DISPUTE</div><h2 className="mt-1 text-xl font-bold">Dispute QA Review</h2><p className="mt-1 text-sm text-slate-500">{disputeModal.agent} · {disputeModal.callId}</p><p className="mt-4 rounded-xl bg-orange-50 p-3 text-sm text-orange-900">Use this when the TL disagrees with the QA finding. The original QA review will not be changed; QA Admin will see the dispute for review.</p><label className="mt-4 block font-semibold">TL Name<input name="disputeBy" defaultValue={userName} required className="focusable mt-1 w-full rounded-xl border p-3"/></label><label className="mt-4 block font-semibold">Why do you disagree?<textarea name="reason" required minLength={10} rows={5} placeholder="Explain what you believe should be reviewed..." className="focusable mt-1 w-full rounded-xl border p-3"/></label><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={()=>setDisputeModal(null)} className="focusable rounded-xl border bg-white px-4 py-2">Cancel</button><button disabled={saving} className="focusable rounded-xl bg-orange-600 px-4 py-2 font-bold text-white disabled:opacity-50">{saving?<TinyLoader label="Submitting..." />:'Submit TL Dispute'}</button></div></form></div>}
   </div>
 }
