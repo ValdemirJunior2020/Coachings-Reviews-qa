@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/firebaseAdmin';
-import { getReviews as getSheetReviews } from '@/lib/googleSheets';
 import type { Center } from '@/lib/types';
 
 const centers:Center[]=['Buwelo','Concentrix','WNS','Telus'];
@@ -42,32 +41,9 @@ export async function GET(req:Request){
   const effectiveRole: 'admin'|'center' = previewCenter?'center':session.role;
   const effectiveCenter=previewCenter||session.center;
 
-  let sourceRows:Array<Record<string,unknown>>=[];
-  try{
-    const snap=await db().collection('reviews')
-      .select('center','agent','finalScore','coached','qaDate','dateCoached')
-      .get();
-    sourceRows=snap.docs.map(doc=>doc.data() as Record<string,unknown>);
-  }catch(firebaseError){
-    console.error('leaderboard firebase failed; using Google Sheet fallback',firebaseError);
-  }
-  let dataSource:'firebase'|'google-sheets'|'unavailable'=sourceRows.length>0?'firebase':'unavailable';
-  if(sourceRows.length===0){
-    try{
-      const sheetReviews=await getSheetReviews();
-      sourceRows=sheetReviews.map(r=>({
-        center:r.center,
-        agent:r.agent,
-        finalScore:r.finalScore,
-        coached:r.coached,
-        qaDate:r.qaDate,
-        dateCoached:r.dateCoached,
-      }));
-      if(sourceRows.length>0)dataSource='google-sheets';
-    }catch(sheetError){
-      console.error('leaderboard Google Sheet recovery failed',sheetError);
-    }
-  }
+  const snap=await db().collection('reviews')
+    .select('center','agent','finalScore','coached','qaDate','dateCoached')
+    .get();
 
   const now=new Date();
   now.setHours(12,0,0,0);
@@ -81,7 +57,8 @@ export async function GET(req:Request){
     centerBuckets.set(center,{total:0,coached:0,onTime:0,speedDays:0,speedCount:0});
   }
 
-  for(const d of sourceRows){
+  for(const doc of snap.docs){
+    const d=doc.data();
     const center=d.center as Center;
     if(!centers.includes(center))continue;
 
@@ -115,7 +92,7 @@ export async function GET(req:Request){
   const rawStats=centers.map(center=>{
     const b=centerBuckets.get(center)!;
     const completionPct=b.total?b.coached/b.total*100:0;
-    const speedPct=b.speedCount?b.onTime/b.speedCount*100:0;
+    const speedPct=b.coached?b.onTime/b.coached*100:0;
     const avgSpeedDays=b.speedCount?b.speedDays/b.speedCount:null;
     const rawScore=completionPct*0.7+speedPct*0.3;
     return {name:center,center,rawScore,completionPct,speedPct,avgSpeedDays,total:b.total,coached:b.coached,pending:b.total-b.coached};
@@ -163,7 +140,6 @@ export async function GET(req:Request){
     kpi:90,
     centerRankingFormula:'Last 30 days: 70% coaching completion + 30% coached within 2 business days, lightly adjusted for small sample sizes',
     centerRanks,
-    agentRanks,
-    dataSource
+    agentRanks
   });
 }
