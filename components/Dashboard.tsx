@@ -30,6 +30,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
   const [centerRanks,setCenterRanks]=useState<CenterRank[]>([]);
   const [agentRanks,setAgentRanks]=useState<AgentRank[]>([]);
   const [leaderboardKpi,setLeaderboardKpi]=useState(90);
+  const [reviewEditor,setReviewEditor]=useState<Review|'new'|null>(null);
 
   async function load(){
     setLoading(true);setError('');
@@ -142,6 +143,56 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     }catch(e){setFlash(e instanceof Error?e.message:'Unable to submit dispute.')}
     finally{setSaving(false)}
   }
+  async function saveReviewAdmin(e:React.FormEvent<HTMLFormElement>){
+    e.preventDefault();
+    if(!admin||!reviewEditor)return;
+    setSaving(true);setFlash('');
+    const f=new FormData(e.currentTarget);
+    const payload={
+      originalCallId:reviewEditor==='new'?'':reviewEditor.callId,
+      center:String(f.get('center')||''),
+      qaDate:String(f.get('qaDate')||''),
+      itinerary:String(f.get('itinerary')||''),
+      agent:String(f.get('agent')||''),
+      callId:String(f.get('callId')||''),
+      guestNeeded:String(f.get('guestNeeded')||''),
+      happened:String(f.get('happened')||''),
+      matrixProcess:String(f.get('matrixProcess')||''),
+      businessImpact:String(f.get('businessImpact')||''),
+      quickCoaching:String(f.get('quickCoaching')||''),
+      callLength:String(f.get('callLength')||''),
+      callDate:String(f.get('callDate')||''),
+      callMonth:String(f.get('callMonth')||''),
+      finalScore:String(f.get('finalScore')||''),
+      scorePassFail:String(f.get('scorePassFail')||''),
+      scoreMarkdowns:String(f.get('scoreMarkdowns')||''),
+    };
+    const method=reviewEditor==='new'?'POST':'PATCH';
+    try{
+      const res=await fetch('/api/reviews',{method,headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+      const d=await res.json();
+      if(!res.ok){setFlash(d.error||'Unable to save review.');return}
+      setReviewEditor(null);setDetail(null);
+      setFlash(reviewEditor==='new'?'✓ Review added.':'✓ Review updated.');
+      await load();
+      try{const lr=await fetch('/api/leaderboard',{cache:'no-store'});const ld=await lr.json();if(lr.ok){setCenterRanks(ld.centerRanks||[]);setAgentRanks(ld.agentRanks||[])}}catch{}
+    }catch(e){setFlash(e instanceof Error?e.message:'Unable to save review.')}
+    finally{setSaving(false)}
+  }
+
+  async function deleteReviewAdmin(r:Review){
+    if(!admin)return;
+    if(!confirm(`PERMANENTLY DELETE QA review ${r.callId} for ${r.agent}? This erases the review forever and cannot be undone.`))return;
+    try{
+      const res=await fetch('/api/reviews',{method:'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({callId:r.callId})});
+      const d=await res.json();
+      if(!res.ok){setFlash(d.error||'Unable to delete review.');return}
+      setDetail(null);setFlash('✓ QA review permanently deleted.');
+      await load();
+      try{const lr=await fetch('/api/leaderboard',{cache:'no-store'});const ld=await lr.json();if(lr.ok){setCenterRanks(ld.centerRanks||[]);setAgentRanks(ld.agentRanks||[])}}catch{}
+    }catch(e){setFlash(e instanceof Error?e.message:'Unable to delete review.')}
+  }
+
   async function uploadDaily(file:File){
     setFlash('Uploading Daily Findings...');
     const body=new FormData();body.append('file',file);
@@ -190,7 +241,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     </aside>
     <main className="w-full p-4 pt-20 md:ml-64 md:p-8">
       <div className="mx-auto max-w-7xl">
-        <div className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-3xl font-bold">QA Coaching Daily Feedbacks</h1><p className="text-slate-500">Quality Assurance Coaching Follow-Up · {userName}</p></div><div className="flex flex-wrap gap-2">{admin&&<label className="focusable cursor-pointer rounded-xl bg-sky-700 px-4 py-2 font-bold text-white">📤 Upload Daily Findings<input type="file" accept=".xlsx,.xls" className="hidden" onChange={e=>{const file=e.target.files?.[0];if(file)uploadDaily(file);e.currentTarget.value=''}}/></label>}<button onClick={downloadReviews} className="focusable rounded-xl border bg-white px-4 py-2">⬇ Download {admin?(filters.center==='All'?'All Centers':filters.center):center}</button><button onClick={load} className="focusable rounded-xl border bg-white px-4 py-2">Refresh</button></div></div>
+        <div className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-3xl font-bold">QA Coaching Daily Feedbacks</h1><p className="text-slate-500">Quality Assurance Coaching Follow-Up · {userName}</p></div><div className="flex flex-wrap gap-2">{admin&&<><button onClick={()=>setReviewEditor('new')} className="focusable rounded-xl border border-sky-200 bg-sky-50 px-4 py-2 font-bold text-sky-800">＋ Add Review</button><label className="focusable cursor-pointer rounded-xl bg-sky-700 px-4 py-2 font-bold text-white">📤 Upload Daily Findings<input type="file" accept=".xlsx,.xls" className="hidden" onChange={e=>{const file=e.target.files?.[0];if(file)uploadDaily(file);e.currentTarget.value=''}}/></label></>}<button onClick={downloadReviews} className="focusable rounded-xl border bg-white px-4 py-2">⬇ Download {admin?(filters.center==='All'?'All Centers':filters.center):center}</button><button onClick={load} className="focusable rounded-xl border bg-white px-4 py-2">Refresh</button></div></div>
         {flash&&<div className="mt-4 rounded-xl bg-sky-50 p-3 text-sky-800">{flash}</div>}
         {error&&<div role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-red-700">{error}</div>}
         {!loading&&!error&&<div className={`mt-5 rounded-2xl p-4 font-semibold ${overdue?'bg-red-50 text-red-800':pending?'bg-amber-50 text-amber-800':'bg-green-50 text-green-800'}`}>{overdue?`🔴 Overdue Coaching — ${overdue} review${overdue===1?'':'s'} pending for more than 2 business days.`:pending?`⚠ Coaching Reminder — ${pending} QA review${pending===1?' is':'s are'} still waiting for coaching confirmation.`:'✅ All Coaching Completed — There are no pending coaching reviews in this view.'}</div>}
@@ -323,8 +374,35 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
       <div className="mt-5 grid gap-4 md:grid-cols-2"><Info label="Date" value={detail.qaDate}/><Info label="Date-of-the-call" value={detail.callDate}/><Info label="What guest needed?" value={detail.guestNeeded}/><Info label="What happened?" value={detail.happened}/><Info label="The Correct Matrix Process" value={detail.matrixProcess}/><Info label="Business impact" value={detail.businessImpact}/><div className="md:col-span-2"><Info label="Quick Coaching" value={detail.quickCoaching}/></div></div>
       <div className="mt-5 rounded-xl bg-white/70 p-3 text-sm text-slate-600">Call Lenght: {detail.callLength||'—'} · Call Month: {detail.callMonth||'—'} · Status: <b>{detail.status}</b></div>
       {detail.tlDisputed&&<div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 p-4"><div className="font-bold text-orange-800">🟠 TL Disputed</div><div className="mt-1 text-sm"><b>Submitted by:</b> {detail.disputeBy||'—'} · {detail.disputeDate||'—'}</div><div className="mt-2 text-sm"><b>Reason:</b> {detail.disputeReason||'—'}</div></div>}
-      <div className="mt-5 flex justify-end"><button onClick={()=>{setDetail(null);setModal(detail)}} className="focusable rounded-xl bg-sky-700 px-4 py-2 font-bold text-white">{detail.coached?'Edit Coaching':'Mark as Coached'}</button></div>
+      <div className="mt-5 flex flex-wrap justify-end gap-2">
+        {admin&&<><button onClick={()=>setReviewEditor(detail)} className="focusable rounded-xl border bg-white px-4 py-2 font-semibold">Edit Review</button><button onClick={()=>deleteReviewAdmin(detail)} className="focusable rounded-xl border border-red-200 bg-red-50 px-4 py-2 font-bold text-red-700">Delete Review</button></>}
+        {!admin&&!detail.tlDisputed&&<button onClick={()=>{setDetail(null);setDisputeModal(detail)}} className="focusable rounded-xl border border-orange-300 bg-orange-50 px-4 py-2 font-bold text-orange-800">Dispute QA Review</button>}
+        <button onClick={()=>{setDetail(null);setModal(detail)}} className="focusable rounded-xl bg-sky-700 px-4 py-2 font-bold text-white">{detail.coached?'Edit Coaching':'Mark as Coached'}</button>
+      </div>
     </div></div>}
+
+    {reviewEditor&&<div role="dialog" aria-modal="true" className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-900/45 p-4"><form onSubmit={saveReviewAdmin} className="glass max-h-[94vh] w-full max-w-4xl overflow-y-auto rounded-3xl p-6">
+      <div className="flex items-start justify-between gap-3"><div><div className="text-xs font-bold uppercase tracking-wide text-sky-700">SUPER ADMIN</div><h2 className="text-xl font-bold">{reviewEditor==='new'?'Add QA Review':'Edit QA Review'}</h2><p className="text-sm text-slate-500">Changes save directly to Firebase.</p></div><button type="button" onClick={()=>setReviewEditor(null)} className="focusable rounded-xl border bg-white px-3 py-2">✕</button></div>
+      <div className="mt-5 grid gap-4 md:grid-cols-2">
+        <label className="font-semibold">Call Center<select name="center" defaultValue={reviewEditor==='new'?(center||'Buwelo'):reviewEditor.center} required className="focusable mt-1 w-full rounded-xl border p-3">{CENTERS.map(c=><option key={c}>{c}</option>)}</select></label>
+        <label className="font-semibold">Call ID<input name="callId" defaultValue={reviewEditor==='new'?'':reviewEditor.callId} required className="focusable mt-1 w-full rounded-xl border p-3"/></label>
+        <label className="font-semibold">QA Date<input name="qaDate" type="date" defaultValue={reviewEditor==='new'?'':reviewEditor.qaDate} className="focusable mt-1 w-full rounded-xl border p-3"/></label>
+        <label className="font-semibold">Date of Call<input name="callDate" type="date" defaultValue={reviewEditor==='new'?'':reviewEditor.callDate} className="focusable mt-1 w-full rounded-xl border p-3"/></label>
+        <label className="font-semibold">Booking Itinerary<input name="itinerary" defaultValue={reviewEditor==='new'?'':reviewEditor.itinerary} className="focusable mt-1 w-full rounded-xl border p-3"/></label>
+        <label className="font-semibold">Agent<input name="agent" defaultValue={reviewEditor==='new'?'':reviewEditor.agent} className="focusable mt-1 w-full rounded-xl border p-3"/></label>
+        <label className="font-semibold">Call Length<input name="callLength" defaultValue={reviewEditor==='new'?'':reviewEditor.callLength} className="focusable mt-1 w-full rounded-xl border p-3"/></label>
+        <label className="font-semibold">Call Month<input name="callMonth" defaultValue={reviewEditor==='new'?'':reviewEditor.callMonth} className="focusable mt-1 w-full rounded-xl border p-3"/></label>
+        <label className="font-semibold">Final Score %<input name="finalScore" type="number" min="0" max="100" step="0.1" defaultValue={reviewEditor==='new'?'':reviewEditor.finalScore??''} className="focusable mt-1 w-full rounded-xl border p-3"/></label>
+        <label className="font-semibold">Pass / Fail<input name="scorePassFail" defaultValue={reviewEditor==='new'?'':reviewEditor.scorePassFail} className="focusable mt-1 w-full rounded-xl border p-3"/></label>
+        <label className="font-semibold md:col-span-2">What guest needed?<textarea name="guestNeeded" rows={2} defaultValue={reviewEditor==='new'?'':reviewEditor.guestNeeded} className="focusable mt-1 w-full rounded-xl border p-3"/></label>
+        <label className="font-semibold md:col-span-2">What happened?<textarea name="happened" rows={3} defaultValue={reviewEditor==='new'?'':reviewEditor.happened} className="focusable mt-1 w-full rounded-xl border p-3"/></label>
+        <label className="font-semibold md:col-span-2">The Correct Matrix Process<textarea name="matrixProcess" rows={3} defaultValue={reviewEditor==='new'?'':reviewEditor.matrixProcess} className="focusable mt-1 w-full rounded-xl border p-3"/></label>
+        <label className="font-semibold md:col-span-2">Business Impact<textarea name="businessImpact" rows={2} defaultValue={reviewEditor==='new'?'':reviewEditor.businessImpact} className="focusable mt-1 w-full rounded-xl border p-3"/></label>
+        <label className="font-semibold md:col-span-2">Quick Coaching<textarea name="quickCoaching" rows={3} defaultValue={reviewEditor==='new'?'':reviewEditor.quickCoaching} className="focusable mt-1 w-full rounded-xl border p-3"/></label>
+        <label className="font-semibold md:col-span-2">Markdowns<input name="scoreMarkdowns" defaultValue={reviewEditor==='new'?'':reviewEditor.scoreMarkdowns} className="focusable mt-1 w-full rounded-xl border p-3"/></label>
+      </div>
+      <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={()=>setReviewEditor(null)} className="focusable rounded-xl border bg-white px-4 py-2">Cancel</button><button disabled={saving} className="focusable rounded-xl bg-sky-700 px-4 py-2 font-bold text-white disabled:opacity-50">{saving?'Saving...':reviewEditor==='new'?'Add Review':'Save Changes'}</button></div>
+    </form></div>}
 
     {modal&&<div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/35 p-4"><form onSubmit={save} className="glass w-full max-w-lg rounded-3xl p-6"><h2 className="text-xl font-bold">{modal.coached?'Edit Coaching':'Mark as Coached'}</h2><p className="mt-1 text-sm text-slate-500">{modal.agent} · {modal.callId}</p><label className="mt-4 block font-semibold">Coached By<input name="coachedBy" defaultValue={modal.coachedBy} required className="focusable mt-1 w-full rounded-xl border p-3"/></label><label className="mt-4 block font-semibold">Date Coached<input name="dateCoached" type="date" defaultValue={modal.dateCoached||new Date().toISOString().slice(0,10)} required className="focusable mt-1 w-full rounded-xl border p-3"/></label><label className="mt-4 block font-semibold">Coaching Response / Notes<textarea name="notes" defaultValue={modal.coachingNotes} rows={4} className="focusable mt-1 w-full rounded-xl border p-3"/></label><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={()=>setModal(null)} className="focusable rounded-xl border bg-white px-4 py-2">Cancel</button><button disabled={saving} className="focusable rounded-xl bg-sky-700 px-4 py-2 font-bold text-white disabled:opacity-50">{saving?'Saving coaching...':'Confirm & Save'}</button></div></form></div>}
 
