@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/firebaseAdmin';
-import { getReviews as getFirebaseReviews } from '@/lib/reviews';
-import { getReviews as getSheetReviews } from '@/lib/googleSheets';
+import { getReviews } from '@/lib/reviews';
 import type { Center } from '@/lib/types';
 
 const map:Record<string,Center>={buwelo:'Buwelo',wns:'WNS',concentrix:'Concentrix',telus:'Telus'};
@@ -49,20 +48,8 @@ export async function GET(req:Request){
     let center:Center|undefined;
     if(s.role==='center') center=s.center;
     else if(q) center=map[q.toLowerCase()];
-    try{
-      const firebaseReviews=await getFirebaseReviews(center);
-      if(firebaseReviews.length>0){
-        return NextResponse.json({reviews:firebaseReviews,source:'firebase'});
-      }
-      console.warn('Firebase returned zero reviews; using Daily Findings recovery source.');
-      const reviews=await getSheetReviews(center);
-      return NextResponse.json({reviews,source:'google-sheets-recovery',warning:'Firebase returned no reviews; coaching history was recovered from the Daily Findings sheet and its saved coaching row highlights.'});
-    }catch(firebaseError){
-      console.error('reviews firebase failed; using Google Sheet recovery',firebaseError);
-      const reviews=await getSheetReviews(center);
-      return NextResponse.json({reviews,source:'google-sheets-recovery',warning:'Firebase unavailable; coaching history was recovered from the Daily Findings sheet and its saved coaching row highlights.'});
-    }
-  }catch(e){console.error('reviews',e);return NextResponse.json({error:'Unable to load coaching reviews from Firebase or Google Sheets.'},{status:503})}
+    return NextResponse.json({reviews:await getReviews(center)});
+  }catch(e){console.error('reviews',e);return NextResponse.json({error:'Unable to load coaching reviews from Firebase.'},{status:503})}
 }
 
 export async function POST(req:Request){
