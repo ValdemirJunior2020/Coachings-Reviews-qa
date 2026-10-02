@@ -317,7 +317,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
             {!adminView&&<button onClick={load} disabled={loading} className="focusable rounded-xl border bg-white px-4 py-2 disabled:opacity-50">{loading?<TinyLoader label="Refreshing..." />:'Refresh'}</button>}
           </div>
         </div>
-        {admin&&center&&<div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900"><div><b>Admin Preview · {center}</b> — only this center's dashboard data is shown.</div><button onClick={()=>location.href=`/center/${center.toLowerCase()}/ranking`} className="focusable rounded-lg bg-white px-3 py-1.5 font-bold text-violet-800 shadow-sm">Open Agent Ranking →</button></div>}
+        {admin&&center&&<div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900"><div><b>Admin Preview · {center}</b> — only this center dashboard data is shown.</div><button onClick={()=>location.href=`/center/${center.toLowerCase()}/ranking`} className="focusable rounded-lg bg-white px-3 py-1.5 font-bold text-violet-800 shadow-sm">Open Agent Ranking →</button></div>}
         {(loading||syncing)&&<div className="mt-4 flex items-center gap-2 rounded-xl bg-sky-50 px-3 py-2 text-sm text-sky-800"><TinyLoader label={loading?'Loading reviews...':'Syncing live Daily Findings...'} /></div>}
         {flash&&<div className="mt-4 rounded-xl bg-sky-50 p-3 text-sky-800">{flash}</div>}
         {error&&<div role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-red-700">{error}</div>}
