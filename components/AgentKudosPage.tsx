@@ -111,9 +111,7 @@ export default function AgentKudosPage({admin,center,userName}:{admin:boolean;ce
       }
     };
 
-    const workers=Math.min(4,targets.length);
-    await Promise.all(Array.from({length:workers},()=>worker()));
-    await load();
+    await worker();
     setSaving(false);setProgress(null);
     if(failed.length){
       setFlash(`⚠ ${targets.length-failed.length} Kudos marked as coached · ${failed.length} could not be updated. You can retry the remaining items.`);
