@@ -144,6 +144,7 @@ export default function AgentKudosPage({admin,center,userName}:{admin:boolean;ce
             <div className="text-sm font-bold uppercase tracking-wide text-emerald-800">Celebrate Great Work</div>
             <div className="mt-1 text-2xl font-extrabold text-slate-900">{pending.length} Kudos waiting to be acknowledged</div>
             <div className="mt-1 text-sm text-slate-700">{visible.length} positive QA review{visible.length===1?'':'s'} · {agents.length} agent{agents.length===1?'':'s'} recognized in this view</div>
+            <div className="mt-2 inline-flex rounded-full bg-white/70 px-3 py-1 text-xs font-bold text-emerald-800">✓ Kudos already acknowledged by QA Admin</div>
           </div>
           <button onClick={()=>markReviews(pending)} disabled={saving||pending.length===0} className="focusable rounded-2xl bg-emerald-700 px-5 py-3 font-extrabold text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-50">
             {saving&&progress?<TinyLoader label={`Marking ${progress.done}/${progress.total}...`} />:`✓ Mark All ${pending.length} as Coached`}
