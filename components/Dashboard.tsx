@@ -287,9 +287,8 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     <button onClick={()=>chooseStatus('Completed')} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">Completed Coaching</button>
     <button onClick={()=>{setKudosOnly(false);setDisputedOnly(true);patch('status','All');setViewMode('cards');setMenuOpen(false)}} className="focusable rounded-lg p-2 text-left hover:bg-orange-50">🟠 TL Disputed{adminView?` (${disputed})`:''}</button>
     <button
-      onClick={()=>{setDisputedOnly(false);setKudosOnly(true);patch('status','All');setViewMode('cards');setMenuOpen(false)}}
-      aria-pressed={kudosOnly}
-      className={`kudos-festive focusable rounded-xl px-3 py-2.5 text-left font-bold text-emerald-900 transition ${kudosOnly?'kudos-festive-active':''}`}
+      onClick={()=>location.href=center?`/center/${center.toLowerCase()}/kudos`:'/admin/kudos'}
+      className="kudos-festive focusable rounded-xl px-3 py-2.5 text-left font-bold text-emerald-900 transition"
     >
       <span className="relative z-[1] flex items-center justify-between gap-2"><span>🌟 Agent Kudos</span><span className="rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-extrabold text-emerald-700">{kudos}</span></span>
     </button>
