@@ -9,3 +9,9 @@
 .matrix-sheen::after{content:"";position:absolute;inset:-20% auto -20% -45%;width:32%;pointer-events:none;background:linear-gradient(100deg,transparent,rgba(34,197,94,.16),rgba(134,239,172,.22),transparent);transform:skewX(-18deg);animation:matrix-sheen 2s ease-in-out infinite}
 @keyframes matrix-sheen{0%{left:-45%;opacity:0}10%{opacity:.75}82%{left:115%;opacity:.65}100%{left:115%;opacity:0}}
 @media (prefers-reduced-motion:reduce){.matrix-sheen::after{animation:none;display:none}}
+
+
+.purple-sheen{position:relative;overflow:hidden;isolation:isolate}
+.purple-sheen::after{content:"";position:absolute;inset:-25% auto -25% -48%;width:34%;pointer-events:none;background:linear-gradient(100deg,transparent,rgba(196,181,253,.18),rgba(233,213,255,.7),rgba(167,139,250,.22),transparent);transform:skewX(-18deg);animation:purple-sheen 2.4s ease-in-out infinite}
+@keyframes purple-sheen{0%{left:-48%;opacity:0}10%{opacity:.82}78%{left:118%;opacity:.72}100%{left:118%;opacity:0}}
+@media (prefers-reduced-motion:reduce){.purple-sheen::after{animation:none;display:none}}
