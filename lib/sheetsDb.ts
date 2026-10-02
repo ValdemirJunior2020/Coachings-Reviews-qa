@@ -3,23 +3,41 @@ import type { Center, Review, SessionUser } from './types';
 type DbResponse<T> = T & { ok?: boolean; error?: string };
 
 function config(){
-  const url=process.env.DATABASE_URL?.trim();
+  const url=process.env.DATABASE_URL_V2?.trim()||process.env.DATABASE_URL?.trim();
   if(!url) throw new Error('DATABASE_URL is not configured');
   return {url,token:process.env.DATABASE_TOKEN?.trim()||''};
 }
 
 export async function databaseRequest<T>(action:string,payload:Record<string,unknown>={}):Promise<T>{
   const {url,token}=config();
-  const res=await fetch(url,{
-    method:'POST',
-    headers:{'content-type':'text/plain;charset=utf-8'},
-    body:JSON.stringify({action,token,...payload}),
-    cache:'no-store',
-  });
+  const controller=new AbortController();
+  const timer=globalThis.setTimeout(()=>controller.abort(),22000);
+  let res:Response;
+  try{
+    res=await fetch(url,{
+      method:'POST',
+      headers:{'content-type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({action,token,...payload}),
+      cache:'no-store',
+      signal:controller.signal,
+    });
+  }catch(e){
+    if(e instanceof Error&&e.name==='AbortError'){
+      throw new Error('Daily-Findings database timed out before responding. Please try again.');
+    }
+    throw e;
+  }finally{
+    globalThis.clearTimeout(timer);
+  }
+
   const text=await res.text();
+  if(res.status===404){
+    throw new Error('Daily-Findings database endpoint returned HTTP 404.');
+  }
+
   let data:DbResponse<T>;
   try{data=JSON.parse(text||'{}') as DbResponse<T>}
-  catch{throw new Error(`Database returned invalid response (HTTP ${res.status}).`)}
+  catch{throw new Error(`Daily-Findings database returned a non-JSON response (HTTP ${res.status}).`)}
   if(!res.ok||data.ok===false||data.error) throw new Error(data.error||`Database request failed (HTTP ${res.status}).`);
   return data as T;
 }
