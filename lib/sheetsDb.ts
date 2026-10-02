@@ -2,6 +2,15 @@ import type { Center, Review, SessionUser } from './types';
 
 type DbResponse<T> = T & { ok?: boolean; error?: string };
 
+const REVIEW_CACHE_TTL_MS=60000;
+const reviewCache=new Map<string,{at:number;reviews:Review[]}>();
+const reviewInflight=new Map<string,Promise<Review[]>>();
+
+function clearReviewCache(){
+  reviewCache.clear();
+  reviewInflight.clear();
+}
+
 function config(){
   const url=process.env.DATABASE_URL_V2?.trim()||process.env.DATABASE_URL?.trim();
   if(!url) throw new Error('DATABASE_URL is not configured');
@@ -43,20 +52,39 @@ export async function databaseRequest<T>(action:string,payload:Record<string,unk
 }
 
 export async function getSheetReviews(center?:Center){
-  const data=await databaseRequest<{reviews:Review[]}>('getReviews',{center:center||''});
-  return data.reviews||[];
+  const key=center||'__all__';
+  const cached=reviewCache.get(key);
+  if(cached&&Date.now()-cached.at<REVIEW_CACHE_TTL_MS)return cached.reviews;
+
+  const existing=reviewInflight.get(key);
+  if(existing)return existing;
+
+  const request=databaseRequest<{reviews:Review[]}>('getReviews',{center:center||''})
+    .then(data=>{
+      const reviews=data.reviews||[];
+      reviewCache.set(key,{at:Date.now(),reviews});
+      return reviews;
+    })
+    .finally(()=>reviewInflight.delete(key));
+
+  reviewInflight.set(key,request);
+  return request;
 }
 
 export async function updateSheetCoaching(args:{
   center:Center;callId:string;coached:boolean;dateCoached?:string;coachedBy?:string;notes?:string;actor:string;role:string;
 }){
-  return databaseRequest<{review:Review}>('updateCoaching',args);
+  const out=await databaseRequest<{review:Review}>('updateCoaching',args);
+  clearReviewCache();
+  return out;
 }
 
 export async function submitSheetDispute(args:{
   center:Center;callId:string;disputeBy:string;reason:string;actor:string;
 }){
-  return databaseRequest<{review:Review}>('submitDispute',args);
+  const out=await databaseRequest<{review:Review}>('submitDispute',args);
+  clearReviewCache();
+  return out;
 }
 
 export async function authenticateManagedUser(email:string,password:string){
@@ -86,18 +114,31 @@ export async function deleteManagedUser(payload:Record<string,unknown>){
 }
 
 export async function getLeaderboardRows(){
-  return databaseRequest<{
-    reviews:Array<Pick<Review,'center'|'agent'|'finalScore'|'scorePassFail'|'coached'|'qaDate'|'dateCoached'>>;
-  }>('getLeaderboardData');
+  const reviews=await getSheetReviews();
+  return {
+    reviews:reviews.map(r=>({
+      center:r.center,
+      agent:r.agent,
+      finalScore:r.finalScore,
+      scorePassFail:r.scorePassFail,
+      coached:r.coached,
+      qaDate:r.qaDate,
+      dateCoached:r.dateCoached,
+    }))
+  };
 }
 
 
 export async function importCenterRows(center:Center,headers:string[],rows:unknown[][]){
-  return databaseRequest<{added:number;updated:number;skipped:number}>('importCenterRows',{center,headers,rows});
+  const out=await databaseRequest<{added:number;updated:number;skipped:number}>('importCenterRows',{center,headers,rows});
+  clearReviewCache();
+  return out;
 }
 
 export async function replaceScores(rows:unknown[][]){
-  return databaseRequest<{written:number}>('replaceScores',{rows});
+  const out=await databaseRequest<{written:number}>('replaceScores',{rows});
+  clearReviewCache();
+  return out;
 }
 
 
