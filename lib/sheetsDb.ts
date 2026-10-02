@@ -69,7 +69,7 @@ export async function deleteManagedUser(payload:Record<string,unknown>){
 
 export async function getLeaderboardRows(){
   return databaseRequest<{
-    reviews:Array<Pick<Review,'center'|'agent'|'finalScore'|'coached'|'qaDate'|'dateCoached'>>;
+    reviews:Array<Pick<Review,'center'|'agent'|'finalScore'|'scorePassFail'|'coached'|'qaDate'|'dateCoached'>>;
   }>('getLeaderboardData');
 }
 
