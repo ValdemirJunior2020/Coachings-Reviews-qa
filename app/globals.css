@@ -15,3 +15,12 @@
 .purple-sheen::after{content:"";position:absolute;inset:-25% auto -25% -48%;width:34%;pointer-events:none;background:linear-gradient(100deg,transparent,rgba(196,181,253,.18),rgba(233,213,255,.7),rgba(167,139,250,.22),transparent);transform:skewX(-18deg);animation:purple-sheen 2.4s ease-in-out infinite}
 @keyframes purple-sheen{0%{left:-48%;opacity:0}10%{opacity:.82}78%{left:118%;opacity:.72}100%{left:118%;opacity:0}}
 @media (prefers-reduced-motion:reduce){.purple-sheen::after{animation:none;display:none}}
+
+
+.kudos-festive{position:relative;overflow:hidden;isolation:isolate;border:1px solid rgba(16,185,129,.2);background:linear-gradient(135deg,#ecfdf5 0%,#dcfce7 18%,#fef9c3 36%,#fde68a 48%,#fce7f3 63%,#e0f2fe 80%,#ede9fe 100%);box-shadow:0 8px 22px rgba(16,185,129,.1),inset 0 1px 0 rgba(255,255,255,.58);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+.kudos-festive:hover{transform:translateY(-1px);box-shadow:0 12px 26px rgba(16,185,129,.14),inset 0 1px 0 rgba(255,255,255,.68)}
+.kudos-festive-active{border-color:rgba(16,185,129,.42);box-shadow:0 0 0 2px rgba(16,185,129,.1),0 12px 28px rgba(16,185,129,.16)}
+.kudos-festive::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.9;background:radial-gradient(circle at 12% 25%,rgba(255,255,255,.6) 0 5px,transparent 6px),radial-gradient(circle at 28% 72%,rgba(251,191,36,.3) 0 4px,transparent 5px),radial-gradient(circle at 58% 20%,rgba(244,114,182,.26) 0 4px,transparent 5px),radial-gradient(circle at 78% 68%,rgba(59,130,246,.24) 0 4px,transparent 5px),radial-gradient(circle at 90% 30%,rgba(139,92,246,.22) 0 3px,transparent 4px)}
+.kudos-festive::after{content:"";position:absolute;inset:-25% auto -25% -45%;width:34%;pointer-events:none;background:linear-gradient(100deg,transparent,rgba(255,255,255,.1),rgba(255,255,255,.78),rgba(255,255,255,.2),transparent);transform:skewX(-18deg);animation:kudos-festive-sheen 2.3s ease-in-out infinite}
+@keyframes kudos-festive-sheen{0%{left:-45%;opacity:0}10%{opacity:.88}80%{left:118%;opacity:.74}100%{left:118%;opacity:0}}
+@media (prefers-reduced-motion:reduce){.kudos-festive::after{animation:none;display:none}}
