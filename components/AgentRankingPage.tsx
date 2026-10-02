@@ -17,6 +17,7 @@ type AgentRank={
   overdue:number;
   topOpportunity:string;
   recentScores:Array<{score:number;date:string;callId:string;status:string;coaching:string}>;
+  repeatIssues:Array<{name:string;count:number;lastDate:string}>;
   trend:'Improving'|'Stable'|'Declining';
   trendDelta:number;
 };
@@ -111,6 +112,7 @@ export default function AgentRankingPage({center,admin,userName}:{center:Center;
     const buckets=new Map<string,{
       name:string;sum:number;count:number;pass:number;fail:number;pending:number;overdue:number;
       opportunities:Map<string,number>;
+      datedOpportunities:Map<string,string[]>;
       scored:Array<{score:number;date:string;callId:string;status:string;coaching:string}>;
     }>();
 
@@ -120,14 +122,20 @@ export default function AgentRankingPage({center,admin,userName}:{center:Center;
       const key=name.toLowerCase();
       const bucket=buckets.get(key)||{
         name,sum:0,count:0,pass:0,fail:0,pending:0,overdue:0,
-        opportunities:new Map<string,number>(),scored:[]
+        opportunities:new Map<string,number>(),datedOpportunities:new Map<string,string[]>(),scored:[]
       };
 
       if(review.status==='Pending')bucket.pending++;
       if(review.status==='Overdue')bucket.overdue++;
 
       const opportunity=opportunityLabel(review);
-      if(opportunity && !review.positive)bucket.opportunities.set(opportunity,(bucket.opportunities.get(opportunity)||0)+1);
+      if(opportunity && !review.positive){
+        bucket.opportunities.set(opportunity,(bucket.opportunities.get(opportunity)||0)+1);
+        const issueDate=review.qaDate||review.callDate||'';
+        const dates=bucket.datedOpportunities.get(opportunity)||[];
+        if(issueDate)dates.push(issueDate);
+        bucket.datedOpportunities.set(opportunity,dates);
+      }
 
       if(review.finalScore!==null&&Number.isFinite(review.finalScore)){
         bucket.sum+=review.finalScore;
@@ -155,6 +163,19 @@ export default function AgentRankingPage({center,admin,userName}:{center:Center;
           return bd-ad;
         });
         const topOpportunity=[...b.opportunities.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))[0]?.[0]||'No recurring markdown';
+        const repeatCutoff=new Date();
+        repeatCutoff.setHours(0,0,0,0);
+        repeatCutoff.setDate(repeatCutoff.getDate()-13);
+        const repeatIssues=[...b.datedOpportunities.entries()]
+          .map(([name,dates])=>{
+            const recent=dates
+              .map(date=>({date,time:parseDate(date)?.getTime()||0}))
+              .filter(x=>x.time>=repeatCutoff.getTime())
+              .sort((a,b)=>b.time-a.time);
+            return {name,count:recent.length,lastDate:recent[0]?.date||''};
+          })
+          .filter(x=>x.count>=2)
+          .sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name));
         const trend=buildTrend(sorted);
         return {
           name:b.name,
@@ -169,6 +190,7 @@ export default function AgentRankingPage({center,admin,userName}:{center:Center;
           overdue:b.overdue,
           topOpportunity,
           recentScores:sorted.slice(0,5),
+          repeatIssues,
           trend:trend.trend,
           trendDelta:trend.delta,
         } satisfies AgentRank;
@@ -226,6 +248,16 @@ export default function AgentRankingPage({center,admin,userName}:{center:Center;
     .sort((a,b)=>b.overdue-a.overdue||(KPI-a.avg)-(KPI-b.avg)||b.fail-a.fail||a.name.localeCompare(b.name))
     .slice(0,8),[ranked]);
 
+  const repeatAlerts=useMemo(()=>ranked
+    .flatMap(agent=>agent.repeatIssues.map(issue=>({
+      agent,
+      issue:issue.name,
+      count:issue.count,
+      lastDate:issue.lastDate,
+    })))
+    .sort((a,b)=>b.count-a.count||(parseDate(b.lastDate)?.getTime()||0)-(parseDate(a.lastDate)?.getTime()||0)||a.agent.name.localeCompare(b.agent.name))
+    .slice(0,8),[ranked]);
+
   const priorityQueue=useMemo(()=>ranked
     .map(r=>{
       const gap=Math.max(0,KPI-r.avg);
@@ -250,7 +282,7 @@ export default function AgentRankingPage({center,admin,userName}:{center:Center;
         <div>
           <div className="text-xs font-bold uppercase tracking-[.18em] text-violet-600">{admin?'Admin Preview · ':''}{center}</div>
           <h1 className="mt-1 text-3xl font-bold">Agent QA Ranking</h1>
-          <p className="mt-1 text-sm text-slate-500">Private to {center} · all scored QAs currently available in Daily-Findings · KPI {KPI}%</p>
+          <p className="mt-1 text-sm text-slate-500">{admin?'QA Admin preview · ':''}Private to {center} · all scored QAs currently available in Daily-Findings · KPI {KPI}%</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={()=>location.href=`/center/${center.toLowerCase()}`} className="focusable rounded-xl border bg-white px-4 py-2 font-semibold">← Back to {center}</button>
@@ -271,7 +303,7 @@ export default function AgentRankingPage({center,admin,userName}:{center:Center;
           <div className="glass rounded-2xl p-4"><div className="text-sm text-slate-500">Pass Rate</div><div className="mt-1 text-2xl font-bold">{summary.passRate.toFixed(1)}%</div></div>
         </div>
 
-        <div className="mt-6 grid gap-4 xl:grid-cols-3">
+        <div className="mt-6 grid gap-4 xl:grid-cols-2 2xl:grid-cols-4">
           <section className="glass rounded-2xl p-5">
             <div className="flex items-center justify-between gap-2"><div><h2 className="font-bold">📅 This Week</h2><p className="text-sm text-slate-500">Monday through today</p></div><span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-800">{week.total} QA{week.total===1?'':'s'}</span></div>
             <div className="mt-4 grid grid-cols-2 gap-2">
@@ -298,6 +330,15 @@ export default function AgentRankingPage({center,admin,userName}:{center:Center;
                 <div className="flex justify-between gap-3 text-sm"><span><b>#{i+1}</b> {o.name}</span><span className="font-bold">{o.count}</span></div>
                 <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-2 rounded-full bg-orange-300" style={{width:`${Math.max(8,o.count/opportunities[0].count*100)}%`}}/></div>
               </div>)}
+            </div>
+          </section>
+
+          <section className="glass rounded-2xl p-5">
+            <div className="flex items-center justify-between gap-2"><div><h2 className="font-bold">🔁 Repeat Issue Alerts</h2><p className="text-sm text-slate-500">Same issue 2+ times in the last 14 days</p></div><span className={`rounded-full px-3 py-1 text-xs font-bold ${repeatAlerts.length?'bg-red-50 text-red-800':'bg-green-50 text-green-800'}`}>{repeatAlerts.length}</span></div>
+            <div className="mt-4 space-y-2">
+              {repeatAlerts.length===0?<div className="rounded-xl bg-green-50 p-3 text-sm text-green-800">No repeat issue alerts in the last 14 days.</div>:repeatAlerts.slice(0,5).map((alert,i)=><button key={`${alert.agent.name}-${alert.issue}-${i}`} onClick={()=>setSelectedAgent(alert.agent)} className="focusable block w-full rounded-xl border border-red-100 bg-red-50/40 p-3 text-left hover:bg-red-50">
+                <div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="truncate font-bold">{alert.agent.name}</div><div className="mt-0.5 text-xs font-semibold text-red-700">{alert.issue}</div><div className="mt-1 text-[11px] text-slate-500">Most recent: {alert.lastDate||'Date unavailable'}</div></div><span className="shrink-0 rounded-full bg-red-100 px-2.5 py-1 text-xs font-bold text-red-800">{alert.count}×</span></div>
+              </button>)}
             </div>
           </section>
         </div>
@@ -356,6 +397,8 @@ export default function AgentRankingPage({center,admin,userName}:{center:Center;
           </div>
 
           <div className="mt-4 rounded-xl border bg-violet-50/50 p-4"><div className="text-xs font-bold uppercase tracking-wide text-violet-700">Most Common Coaching Opportunity</div><div className="mt-1 font-bold">{selectedAgent.topOpportunity}</div></div>
+
+          {selectedAgent.repeatIssues.length>0&&<div className="mt-4 rounded-xl border border-red-100 bg-red-50/50 p-4"><div className="text-xs font-bold uppercase tracking-wide text-red-700">🔁 Repeat Issue Alerts · Last 14 Days</div><div className="mt-2 space-y-2">{selectedAgent.repeatIssues.map(issue=><div key={issue.name} className="flex items-center justify-between gap-3 text-sm"><div><b>{issue.name}</b><div className="text-xs text-slate-500">Most recent: {issue.lastDate||'Date unavailable'}</div></div><span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-bold text-red-800">{issue.count}×</span></div>)}</div></div>}
 
           <div className="mt-5"><h3 className="font-bold">Last 5 Scored QAs</h3><div className="mt-3 space-y-2">
             {selectedAgent.recentScores.length===0?<div className="text-sm text-slate-500">No scored QA history available.</div>:selectedAgent.recentScores.map((r,i)=><div key={`${r.callId}-${i}`} className="rounded-xl border bg-white/75 p-3">
