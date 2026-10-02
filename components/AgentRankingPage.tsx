@@ -36,7 +36,21 @@ export default function AgentRankingPage({center,admin,userName}:{center:Center;
     }
   }
 
-  useEffect(()=>{load()},[]);
+  useEffect(()=>{
+    let active=true;
+    fetch('/api/leaderboard',{cache:'no-store'})
+      .then(async res=>({res,data:await res.json()}))
+      .then(({res,data})=>{
+        if(!res.ok)throw new Error(data.error||'Unable to load agent ranking.');
+        if(active){
+          setRows(data.agentRanks||[]);
+          setKpi(Number(data.kpi)||90);
+        }
+      })
+      .catch(e=>{if(active)setError(e instanceof Error?e.message:'Unable to load agent ranking.')})
+      .finally(()=>{if(active)setLoading(false)});
+    return()=>{active=false};
+  },[]);
 
   const ranked=useMemo(()=>rows
     .filter(r=>r.center===center)
