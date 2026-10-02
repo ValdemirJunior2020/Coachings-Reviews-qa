@@ -54,7 +54,7 @@ export default function AgentRankingPage({center,admin,userName}:{center:Center;
   async function load(){
     setLoading(true);setError('');
     try{
-      const res=await fetch(`/api/reviews?center=${encodeURIComponent(center.toLowerCase())}`,{cache:'no-store'});
+      const res=await fetch('/api/reviews',{cache:'no-store'});
       const d=await res.json();
       if(!res.ok)throw new Error(d.error||'Unable to load agent ranking.');
       setRows(buildRanking(d.reviews||[]));
@@ -68,7 +68,7 @@ export default function AgentRankingPage({center,admin,userName}:{center:Center;
 
   useEffect(()=>{
     let active=true;
-    fetch(`/api/reviews?center=${encodeURIComponent(center.toLowerCase())}`,{cache:'no-store'})
+    fetch('/api/reviews',{cache:'no-store'})
       .then(async res=>({res,data:await res.json()}))
       .then(({res,data})=>{
         if(!res.ok)throw new Error(data.error||'Unable to load agent ranking.');
