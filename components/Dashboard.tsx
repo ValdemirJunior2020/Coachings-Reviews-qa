@@ -32,6 +32,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
   const [menuOpen,setMenuOpen]=useState(false);
   const [viewMode,setViewMode]=useState<'cards'|'sheet'>('cards');
   const [disputedOnly,setDisputedOnly]=useState(false);
+  const [kudosOnly,setKudosOnly]=useState(false);
   const [disputeModal,setDisputeModal]=useState<Review|null>(null);
   const [presence,setPresence]=useState<PresenceUser[]>([]);
   const [centerRanks,setCenterRanks]=useState<CenterRank[]>([]);
@@ -140,8 +141,9 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
 
   const agents=useMemo(()=>['All',...Array.from(new Set(reviews.filter(r=>filters.center==='All'||r.center===filters.center).map(r=>r.agent))).sort()],[reviews,filters.center]);
   const baseFiltered=useMemo(()=>filterReviews(reviews,filters),[reviews,filters]);
-  const filtered=useMemo(()=>disputedOnly?baseFiltered.filter(r=>r.tlDisputed):baseFiltered,[baseFiltered,disputedOnly]);
+  const filtered=useMemo(()=>kudosOnly?baseFiltered.filter(r=>r.positive):disputedOnly?baseFiltered.filter(r=>r.tlDisputed):baseFiltered,[baseFiltered,disputedOnly,kudosOnly]);
   const disputed=reviews.filter(r=>r.tlDisputed&&(filters.center==='All'||r.center===filters.center)).length;
+  const kudos=reviews.filter(r=>r.positive&&(filters.center==='All'||r.center===filters.center)).length;
   const pending=filtered.filter(r=>r.status==='Pending').length;
   const completed=filtered.filter(r=>r.status==='Completed').length;
   const overdue=filtered.filter(r=>r.status==='Overdue').length;
@@ -161,7 +163,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
   const medal=(rank:number)=>rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':`🏅 ${rank}`;
 
   function patch<K extends keyof ReviewFilters>(key:K,value:ReviewFilters[K]){setFilters(f=>({...f,[key]:value}))}
-  function chooseStatus(value:'All'|ReviewStatus){setDisputedOnly(false);patch('status',value);setMenuOpen(false)}
+  function chooseStatus(value:'All'|ReviewStatus){setDisputedOnly(false);setKudosOnly(false);patch('status',value);setMenuOpen(false)}
 
   async function save(e:React.FormEvent<HTMLFormElement>){
     e.preventDefault(); if(!modal)return; setSaving(true);setFlash('');
@@ -283,7 +285,14 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     <button onClick={()=>chooseStatus('Pending')} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">Pending Coaching</button>
     <button onClick={()=>chooseStatus('Overdue')} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">Overdue</button>
     <button onClick={()=>chooseStatus('Completed')} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">Completed Coaching</button>
-    <button onClick={()=>{setDisputedOnly(true);patch('status','All');setViewMode('cards');setMenuOpen(false)}} className="focusable rounded-lg p-2 text-left hover:bg-orange-50">🟠 TL Disputed{adminView?` (${disputed})`:''}</button>
+    <button onClick={()=>{setKudosOnly(false);setDisputedOnly(true);patch('status','All');setViewMode('cards');setMenuOpen(false)}} className="focusable rounded-lg p-2 text-left hover:bg-orange-50">🟠 TL Disputed{adminView?` (${disputed})`:''}</button>
+    <button
+      onClick={()=>{setDisputedOnly(false);setKudosOnly(true);patch('status','All');setViewMode('cards');setMenuOpen(false)}}
+      aria-pressed={kudosOnly}
+      className={`kudos-action focusable rounded-xl px-3 py-2.5 text-left font-bold text-emerald-900 transition ${kudosOnly?'kudos-action-active':''}`}
+    >
+      <span className="relative z-[1] flex items-center justify-between gap-2"><span>🌟 Agent Kudos</span><span className="rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-extrabold text-emerald-700">{kudos}</span></span>
+    </button>
     <button onClick={()=>{setMatrixOpen(true);setMenuOpen(false)}} className="matrix-sheen focusable rounded-lg p-2 text-left hover:bg-emerald-50">⌕ Matrix Quick Search</button>
     {center&&<button onClick={()=>location.href=`/center/${center.toLowerCase()}/ranking`} className="purple-sheen focusable rounded-lg border border-violet-100 bg-violet-50/70 p-2 text-left font-semibold text-violet-800 hover:bg-violet-100">🏆 Agent Ranking</button>}
     {adminView&&<button onClick={()=>location.href='/admin/settings'} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">⚙ Admin / Settings</button>}
