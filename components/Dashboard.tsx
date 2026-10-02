@@ -289,7 +289,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     <button
       onClick={()=>{setDisputedOnly(false);setKudosOnly(true);patch('status','All');setViewMode('cards');setMenuOpen(false)}}
       aria-pressed={kudosOnly}
-      className={`kudos-action focusable rounded-xl px-3 py-2.5 text-left font-bold text-emerald-900 transition ${kudosOnly?'kudos-action-active':''}`}
+      className={`kudos-festive focusable rounded-xl px-3 py-2.5 text-left font-bold text-emerald-900 transition ${kudosOnly?'kudos-festive-active':''}`}
     >
       <span className="relative z-[1] flex items-center justify-between gap-2"><span>🌟 Agent Kudos</span><span className="rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-extrabold text-emerald-700">{kudos}</span></span>
     </button>
