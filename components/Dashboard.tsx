@@ -115,12 +115,13 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
       }catch{}
     };
 
-    heartbeat();
+    const initial=window.setTimeout(heartbeat,15000);
     const timer=window.setInterval(heartbeat,120000);
     const onVisibility=()=>{if(document.visibilityState==='visible'){markActive();heartbeat()}};
     document.addEventListener('visibilitychange',onVisibility);
 
     return ()=>{
+      window.clearTimeout(initial);
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange',onVisibility);
       events.forEach(event=>window.removeEventListener(event,markActive));
@@ -137,9 +138,9 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
         if(!cancelled&&res.ok)setPresence(d.users||[]);
       }catch{}
     };
-    refreshPresence();
+    const initial=window.setTimeout(refreshPresence,20000);
     const timer=window.setInterval(refreshPresence,120000);
-    return()=>{cancelled=true;window.clearInterval(timer)};
+    return()=>{cancelled=true;window.clearTimeout(initial);window.clearInterval(timer)};
   },[admin]);
 
   const agents=useMemo(()=>['All',...Array.from(new Set(reviews.filter(r=>filters.center==='All'||r.center===filters.center).map(r=>r.agent))).sort()],[reviews,filters.center]);
