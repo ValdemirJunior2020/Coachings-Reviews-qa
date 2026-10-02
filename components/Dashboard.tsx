@@ -53,19 +53,21 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     if(syncing)return;
     setSyncing(true);setError('');
     try{
-      const [reviewsRes,leaderboardRes]=await Promise.all([
-        fetch('/api/reviews',{cache:'no-store'}),
-        fetch('/api/leaderboard',{cache:'no-store'})
-      ]);
+      const reviewsRes=await fetch('/api/reviews',{cache:'no-store'});
       const reviewsData=await reviewsRes.json();
       if(!reviewsRes.ok)throw new Error(reviewsData.error||'Unable to load Daily Findings.');
       setReviews(reviewsData.reviews||[]);
 
-      const leaderboardData=await leaderboardRes.json();
-      if(leaderboardRes.ok){
-        setCenterRanks(leaderboardData.centerRanks||[]);
-        setAgentRanks(leaderboardData.agentRanks||[]);
-        setLeaderboardKpi(Number(leaderboardData.kpi)||90);
+      if(admin){
+        try{
+          const leaderboardRes=await fetch('/api/leaderboard',{cache:'no-store'});
+          const leaderboardData=await leaderboardRes.json();
+          if(leaderboardRes.ok){
+            setCenterRanks(leaderboardData.centerRanks||[]);
+            setAgentRanks(leaderboardData.agentRanks||[]);
+            setLeaderboardKpi(Number(leaderboardData.kpi)||90);
+          }
+        }catch{}
       }
       if(showMessage)setFlash(`✓ Synced ${(reviewsData.reviews||[]).length} reviews from live Daily Findings.`);
     }catch(e){
@@ -76,6 +78,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
   }
   useEffect(()=>{load()},[]);
   useEffect(()=>{
+    if(!admin)return;
     const loadLeaderboard=async()=>{
       try{
         const res=await fetch('/api/leaderboard',{cache:'no-store'});
@@ -88,13 +91,13 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
       }catch{}
     };
     loadLeaderboard();
-  },[]);
+  },[admin]);
 
   useEffect(()=>{
     if(!admin)return;
     const timer=window.setInterval(()=>{
       if(document.visibilityState==='visible')syncDailyFindings(false);
-    },60000);
+    },300000);
     return()=>window.clearInterval(timer);
   },[admin]);
 
@@ -113,7 +116,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     };
 
     heartbeat();
-    const timer=window.setInterval(heartbeat,30000);
+    const timer=window.setInterval(heartbeat,120000);
     const onVisibility=()=>{if(document.visibilityState==='visible'){markActive();heartbeat()}};
     document.addEventListener('visibilitychange',onVisibility);
 
@@ -135,7 +138,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
       }catch{}
     };
     refreshPresence();
-    const timer=window.setInterval(refreshPresence,30000);
+    const timer=window.setInterval(refreshPresence,120000);
     return()=>{cancelled=true;window.clearInterval(timer)};
   },[admin]);
 
