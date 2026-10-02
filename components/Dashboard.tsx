@@ -9,7 +9,7 @@ import MatrixQuickSearch from '@/components/MatrixQuickSearch';
 const CENTERS:Center[]=['Buwelo','WNS','Concentrix','Telus'];
 type PresenceUser={id:string;email:string;name:string;role:'admin'|'center';center:Center|'';page:string;status:'online'|'idle'|'offline';lastSeen:string};
 type CenterRank={name:string;center:Center|null;rank:number;isOwn:boolean;coachingScore:number|null;completionPct:number|null;speedPct:number|null;avgSpeedDays:number|null;total:number|null;coached:number|null;pending:number|null;provisional:boolean};
-type AgentRank={name:string;center:Center;avg:number;count:number;rank:number};
+type AgentRank={name:string;center:Center;avg:number;count:number;pass:number;fail:number;passRate:number;rank:number};
 const emptyFilters=(center?:Center):ReviewFilters=>({search:'',center:center||'All',agent:'All',status:'All',itinerary:'',callId:'',qaDate:'',callDate:'',coachedDate:'',range:'All',from:'',to:''});
 
 function Stat({label,value}:{label:string;value:string|number}){return <div className="glass rounded-2xl p-4"><div className="text-sm text-slate-500">{label}</div><div className="mt-1 text-2xl font-bold">{value}</div></div>}
@@ -38,6 +38,8 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
   const [agentRanks,setAgentRanks]=useState<AgentRank[]>([]);
   const [leaderboardKpi,setLeaderboardKpi]=useState(90);
   const [matrixOpen,setMatrixOpen]=useState(false);
+  const [centerViewMenuOpen,setCenterViewMenuOpen]=useState(false);
+  const adminView=admin&&!center;
 
   async function load(){
     setLoading(true);setError('');
@@ -146,10 +148,16 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
   const total=filtered.length;
   const pct=total?Math.round(completed/total*100):0;
   const leaderboardAgents=useMemo(()=>{
-    const selected=admin&&filters.center!=='All'?filters.center:center;
+    const selected=center||(adminView&&filters.center!=='All'?filters.center:undefined);
     const rows=selected?agentRanks.filter(a=>a.center===selected):agentRanks;
     return [...rows].sort((a,b)=>b.avg-a.avg||b.count-a.count||a.name.localeCompare(b.name)).slice(0,12).map((a,i)=>({...a,rank:i+1}));
-  },[agentRanks,admin,filters.center,center]);
+  },[agentRanks,adminView,filters.center,center]);
+  const displayCenterRanks=useMemo(()=>{
+    if(!admin||!center)return centerRanks;
+    return centerRanks.map(r=>r.center===center
+      ?{...r,isOwn:true}
+      :{...r,center:null,name:'Other Center',isOwn:false,coachingScore:null,completionPct:null,speedPct:null,avgSpeedDays:null,total:null,coached:null,pending:null});
+  },[centerRanks,admin,center]);
   const medal=(rank:number)=>rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':`🏅 ${rank}`;
 
   function patch<K extends keyof ReviewFilters>(key:K,value:ReviewFilters[K]){setFilters(f=>({...f,[key]:value}))}
@@ -239,7 +247,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     async function downloadReviews(){
     if(exporting)return;
     setExporting(true);
-    const selected=admin&&filters.center!=='All'?String(filters.center):'';
+    const selected=center?center:(adminView&&filters.center!=='All'?String(filters.center):'');
     const path='/api/export'+(selected?`?center=${encodeURIComponent(selected)}`:'');
     try{
       const res=await fetch(path);
@@ -275,9 +283,10 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     <button onClick={()=>chooseStatus('Pending')} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">Pending Coaching</button>
     <button onClick={()=>chooseStatus('Overdue')} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">Overdue</button>
     <button onClick={()=>chooseStatus('Completed')} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">Completed Coaching</button>
-    <button onClick={()=>{setDisputedOnly(true);patch('status','All');setViewMode('cards');setMenuOpen(false)}} className="focusable rounded-lg p-2 text-left hover:bg-orange-50">🟠 TL Disputed{admin?` (${disputed})`:''}</button>
+    <button onClick={()=>{setDisputedOnly(true);patch('status','All');setViewMode('cards');setMenuOpen(false)}} className="focusable rounded-lg p-2 text-left hover:bg-orange-50">🟠 TL Disputed{adminView?` (${disputed})`:''}</button>
     <button onClick={()=>{setMatrixOpen(true);setMenuOpen(false)}} className="matrix-sheen focusable rounded-lg p-2 text-left hover:bg-emerald-50">⌕ Matrix Quick Search</button>
-    {admin&&<button onClick={()=>location.href='/admin/settings'} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">⚙ Admin / Settings</button>}
+    {center&&<button onClick={()=>location.href=`/center/${center.toLowerCase()}/ranking`} className="purple-sheen focusable rounded-lg border border-violet-100 bg-violet-50/70 p-2 text-left font-semibold text-violet-800 hover:bg-violet-100">🏆 Agent Ranking</button>}
+    {adminView&&<button onClick={()=>location.href='/admin/settings'} className="focusable rounded-lg p-2 text-left hover:bg-sky-50">⚙ Admin / Settings</button>}
     <button onClick={logout} disabled={logoutBusy} className="focusable rounded-lg p-2 text-left text-red-700 hover:bg-red-50 disabled:opacity-50">{logoutBusy?<TinyLoader label="Logging out..." />:'Logout'}</button>
   </nav>;
 
@@ -286,12 +295,29 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
     <button onClick={()=>setMenuOpen(true)} className="focusable fixed left-4 top-4 z-40 rounded-xl bg-white/95 px-3 py-2 shadow md:hidden" aria-label="Open navigation">☰ Menu</button>
     {menuOpen&&<button className="fixed inset-0 z-40 bg-slate-900/35 md:hidden" aria-label="Close navigation" onClick={()=>setMenuOpen(false)}/>}
     <aside className={`glass fixed inset-y-0 left-0 z-50 w-64 p-5 transition-transform md:translate-x-0 ${menuOpen?'translate-x-0':'-translate-x-full'} md:block`}>
-      <div className="flex items-center gap-3"><img src="/images/qa-control-background.jpg" alt="QA Control" className="h-12 w-12 rounded-xl object-cover"/><div><div className="font-bold">QA Control</div><div className="text-xs text-slate-500">{admin?'Super Admin':center}</div></div></div>
+      <div className="flex items-center gap-3"><img src="/images/qa-control-background.jpg" alt="QA Control" className="h-12 w-12 rounded-xl object-cover"/><div><div className="font-bold">QA Control</div><div className="text-xs text-slate-500">{adminView?'Super Admin':admin&&center?`Admin Preview · ${center}`:center}</div></div></div>
       {nav}
     </aside>
     <main className="w-full p-4 pt-20 md:ml-64 md:p-8">
       <div className="mx-auto max-w-7xl">
-        <div className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-3xl font-bold">QA Coaching Daily Feedbacks</h1><p className="text-slate-500">Quality Assurance Coaching Follow-Up · {userName}</p></div><div className="flex flex-wrap gap-2">{admin&&<button onClick={()=>syncDailyFindings(true)} disabled={syncing||loading} className="focusable rounded-xl bg-sky-700 px-4 py-2 font-bold text-white disabled:cursor-wait disabled:opacity-60">{syncing?<TinyLoader label="Syncing..." />:'↻ Sync Daily Findings'}</button>}<button onClick={downloadReviews} disabled={exporting} className="focusable rounded-xl border bg-white px-4 py-2 disabled:opacity-50">{exporting?<TinyLoader label="Preparing..." />:`⬇ Download ${admin?(filters.center==='All'?'All Centers':filters.center):center}`}</button>{!admin&&<button onClick={load} disabled={loading} className="focusable rounded-xl border bg-white px-4 py-2 disabled:opacity-50">{loading?<TinyLoader label="Refreshing..." />:'Refresh'}</button>}</div></div>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div><h1 className="text-3xl font-bold">QA Coaching Daily Feedbacks</h1><p className="text-slate-500">Quality Assurance Coaching Follow-Up · {userName}</p></div>
+          <div className="flex flex-wrap gap-2">
+            {admin&&<div className="relative">
+              {center?<button onClick={()=>location.href='/admin'} className="purple-sheen focusable rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 font-bold text-violet-800">← Return to Admin View</button>:<>
+                <button onClick={()=>setCenterViewMenuOpen(v=>!v)} className="purple-sheen focusable rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 font-bold text-violet-800">◈ View as Center</button>
+                {centerViewMenuOpen&&<div className="absolute right-0 top-12 z-40 w-52 rounded-2xl border bg-white p-2 shadow-xl">
+                  <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Private center view</div>
+                  {CENTERS.map(c=><button key={c} onClick={()=>location.href=`/center/${c.toLowerCase()}`} className="focusable block w-full rounded-xl px-3 py-2 text-left font-semibold hover:bg-violet-50">{c}</button>)}
+                </div>}
+              </>}
+            </div>}
+            {adminView&&<button onClick={()=>syncDailyFindings(true)} disabled={syncing||loading} className="focusable rounded-xl bg-sky-700 px-4 py-2 font-bold text-white disabled:cursor-wait disabled:opacity-60">{syncing?<TinyLoader label="Syncing..." />:'↻ Sync Daily Findings'}</button>}
+            <button onClick={downloadReviews} disabled={exporting} className="focusable rounded-xl border bg-white px-4 py-2 disabled:opacity-50">{exporting?<TinyLoader label="Preparing..." />:`⬇ Download ${adminView?(filters.center==='All'?'All Centers':filters.center):center}`}</button>
+            {!adminView&&<button onClick={load} disabled={loading} className="focusable rounded-xl border bg-white px-4 py-2 disabled:opacity-50">{loading?<TinyLoader label="Refreshing..." />:'Refresh'}</button>}
+          </div>
+        </div>
+        {admin&&center&&<div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900"><div><b>Admin Preview · {center}</b> — only this center's dashboard data is shown.</div><button onClick={()=>location.href=`/center/${center.toLowerCase()}/ranking`} className="focusable rounded-lg bg-white px-3 py-1.5 font-bold text-violet-800 shadow-sm">Open Agent Ranking →</button></div>}
         {(loading||syncing)&&<div className="mt-4 flex items-center gap-2 rounded-xl bg-sky-50 px-3 py-2 text-sm text-sky-800"><TinyLoader label={loading?'Loading reviews...':'Syncing live Daily Findings...'} /></div>}
         {flash&&<div className="mt-4 rounded-xl bg-sky-50 p-3 text-sky-800">{flash}</div>}
         {error&&<div role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-red-700">{error}</div>}
@@ -299,7 +325,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
 
         <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-6"><Stat label="Reviews" value={total}/><Stat label="Pending" value={pending}/><Stat label="Completed" value={completed}/><Stat label="Overdue" value={overdue}/><Stat label="🟠 TL Disputed" value={disputed}/><Stat label="Completion" value={`${pct}%`}/></div>
 
-        {admin&&<div className="glass mt-5 rounded-2xl p-5">
+        {adminView&&<div className="glass mt-5 rounded-2xl p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div><h2 className="font-bold">🟢 Online Now</h2><p className="text-sm text-slate-500">Live activity in the QA app · refreshes every 30 seconds</p></div>
             <div className="text-sm font-bold text-green-700">{presence.filter(u=>u.status==='online').length} online · {presence.filter(u=>u.status==='idle').length} idle</div>
@@ -319,9 +345,9 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
           <section className="glass rounded-2xl p-5">
             <div className="flex items-center justify-between gap-3"><div><h2 className="font-bold">🏆 Center Coaching Leaderboard</h2><p className="text-sm text-slate-500">70% reviews completed · 30% coached within 2 business days</p></div><span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-800">Coaching Activity</span></div>
             <div className="mt-4 space-y-2">
-              {centerRanks.length===0?<div className="text-sm text-slate-500">No coaching activity loaded yet.</div>:centerRanks.map((r,i)=><div key={`${r.rank}-${i}`} className={`rounded-xl border p-3 ${r.isOwn?'border-sky-300 bg-sky-50':'bg-white/70'}`}>
+              {centerRanks.length===0?<div className="text-sm text-slate-500">No coaching activity loaded yet.</div>:displayCenterRanks.map((r,i)=><div key={`${r.rank}-${i}`} className={`rounded-xl border p-3 ${r.isOwn?'border-sky-300 bg-sky-50':'bg-white/70'}`}>
                 <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3"><span className="text-xl">{medal(r.rank)}</span><div><div className="font-bold">{r.name}{r.isOwn?' · Your Center':''}{r.provisional?<span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">Provisional</span>:null}</div><div className="text-xs text-slate-500">{r.isOwn||admin?'Coaching completion + speed':'Private center'}</div></div></div>
+                  <div className="flex items-center gap-3"><span className="text-xl">{medal(r.rank)}</span><div><div className="font-bold">{r.name}{r.isOwn?' · Your Center':''}{r.provisional?<span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">Provisional</span>:null}</div><div className="text-xs text-slate-500">{r.isOwn||adminView?'Coaching completion + speed':'Private center'}</div></div></div>
                   <div className="text-right">{r.coachingScore===null?<div className="text-sm font-semibold text-slate-400">Numbers private</div>:<><div className="text-xl font-bold text-sky-800">{r.coachingScore.toFixed(1)}</div><div className="text-xs text-slate-500">activity score</div></>}</div>
                 </div>
                 {r.coachingScore!==null&&<div className="mt-3 grid grid-cols-2 gap-2 text-xs">
@@ -334,9 +360,9 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
           </section>
 
           <section className="glass rounded-2xl p-5">
-            <div className="flex items-center justify-between gap-3"><div><h2 className="font-bold">⭐ Agent Leaderboard</h2><p className="text-sm text-slate-500">{admin?(filters.center==='All'?'All centers':'Private view · '+filters.center):'Private to '+center} · KPI {leaderboardKpi}%</p></div><span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-800">Top QA</span></div>
+            <div className="flex items-center justify-between gap-3"><div><h2 className="font-bold">⭐ Agent Leaderboard</h2><p className="text-sm text-slate-500">{adminView?(filters.center==='All'?'All centers':'Private view · '+filters.center):'Private to '+center} · KPI {leaderboardKpi}%</p></div><span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-800">Top QA</span></div>
             <div className="mt-4 space-y-3">
-              {leaderboardAgents.length===0?<div className="text-sm text-slate-500">No agent QA scores loaded yet. Re-upload the current Daily Findings workbook once so the Scores tab is saved to Firebase.</div>:leaderboardAgents.map(a=><div key={`${a.center}-${a.name}`} className="rounded-xl border bg-white/70 p-3">
+              {leaderboardAgents.length===0?<div className="text-sm text-slate-500">No agent QA scores are available yet in the Daily-Findings Scores data.</div>:leaderboardAgents.map(a=><div key={`${a.center}-${a.name}`} className="rounded-xl border bg-white/70 p-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-3"><span className="text-xl">{medal(a.rank)}</span><div className="min-w-0"><div className="truncate font-bold">{a.name}</div><div className="text-xs text-slate-500">{a.center} · {a.count} scored call{a.count===1?'':'s'}</div></div></div>
                   <div className="shrink-0 text-right"><div className={`text-lg font-bold ${a.avg>=leaderboardKpi?'text-green-700':'text-red-700'}`}>{a.avg.toFixed(1)}%</div><div className={`text-[11px] font-bold ${a.avg>=leaderboardKpi?'text-green-700':'text-red-700'}`}>{a.avg>=leaderboardKpi?'✓ Passing':'⚠ Needs Attention'}</div></div>
@@ -347,12 +373,12 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
           </section>
         </div>
 
-        {admin&&<div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{CENTERS.map(c=>{const rows=reviews.filter(r=>r.center===c),done=rows.filter(r=>r.coached).length,late=rows.filter(r=>r.status==='Overdue').length,centerPct=rows.length?Math.round(done/rows.length*100):0;return <button key={c} onClick={()=>patch('center',c)} className="glass focusable rounded-2xl p-4 text-left"><div className="font-bold">{c}</div><div className="mt-2 text-sm text-slate-600">{rows.length} Reviews · {rows.length-done} Pending · {late} Overdue</div><div className="mt-2 text-xl font-bold">{centerPct}% Complete</div></button>})}</div>}
+        {adminView&&<div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{CENTERS.map(c=>{const rows=reviews.filter(r=>r.center===c),done=rows.filter(r=>r.coached).length,late=rows.filter(r=>r.status==='Overdue').length,centerPct=rows.length?Math.round(done/rows.length*100):0;return <button key={c} onClick={()=>patch('center',c)} className="glass focusable rounded-2xl p-4 text-left"><div className="font-bold">{c}</div><div className="mt-2 text-sm text-slate-600">{rows.length} Reviews · {rows.length-done} Pending · {late} Overdue</div><div className="mt-2 text-xl font-bold">{centerPct}% Complete</div></button>})}</div>}
 
         <div className="glass mt-5 rounded-2xl p-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <input aria-label="Search reviews" value={filters.search} onChange={e=>patch('search',e.target.value)} placeholder="Search all review text..." className="focusable rounded-xl border p-2 xl:col-span-2"/>
-            {admin&&<select aria-label="Call Center" value={filters.center} onChange={e=>{patch('center',e.target.value as ReviewFilters['center']);patch('agent','All')}} className="focusable rounded-xl border p-2"><option>All</option>{CENTERS.map(c=><option key={c}>{c}</option>)}</select>}
+            {adminView&&<select aria-label="Call Center" value={filters.center} onChange={e=>{patch('center',e.target.value as ReviewFilters['center']);patch('agent','All')}} className="focusable rounded-xl border p-2"><option>All</option>{CENTERS.map(c=><option key={c}>{c}</option>)}</select>}
             <select aria-label="Agent" value={filters.agent} onChange={e=>patch('agent',e.target.value)} className="focusable rounded-xl border p-2">{agents.map(a=><option key={a}>{a}</option>)}</select>
             <input aria-label="Booking itinerary" value={filters.itinerary} onChange={e=>patch('itinerary',e.target.value)} placeholder="Itinerary" className="focusable rounded-xl border p-2"/>
             <input aria-label="Call ID" value={filters.callId} onChange={e=>patch('callId',e.target.value)} placeholder="Call ID" className="focusable rounded-xl border p-2"/>
@@ -366,13 +392,13 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
           <button onClick={()=>setFilters(emptyFilters(center))} className="focusable mt-3 rounded-xl border bg-white px-4 py-2 text-sm">Clear Filters</button>
         </div>
 
-        {admin&&<div className="mt-5 grid gap-4 lg:grid-cols-2">
+        {adminView&&<div className="mt-5 grid gap-4 lg:grid-cols-2">
           <div className="glass rounded-2xl p-5"><h2 className="font-bold">Coaching Completion by Center</h2><div className="mt-4 space-y-3">{CENTERS.map(c=>{const rows=reviews.filter(r=>r.center===c),done=rows.filter(r=>r.coached).length,p=rows.length?Math.round(done/rows.length*100):0;return <button key={c} onClick={()=>patch('center',c)} className="block w-full text-left"><div className="flex justify-between text-sm"><span>{c}</span><span>{p}%</span></div><div className="h-3 rounded-full bg-slate-100"><div className="h-3 rounded-full bg-sky-600" style={{width:`${p}%`}}/></div></button>})}</div></div>
           <div className="glass rounded-2xl p-5"><h2 className="font-bold">Pending vs Completed</h2><div className="mt-5 flex items-center gap-6"><div className="h-32 w-32 rounded-full" style={{background:`conic-gradient(#0284c7 0 ${pct}%, #f1c75b ${pct}% 100%)`}} aria-label={`${pct}% completed`}/><div className="space-y-2 text-sm"><div>● Completed: <b>{completed}</b></div><div>○ Pending/Overdue: <b>{pending+overdue}</b></div></div></div></div>
         </div>}
 
         {viewMode==='sheet'?<div className="glass mt-5 overflow-hidden rounded-2xl">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-white/70 p-4"><div><h2 className="font-bold">Daily Findings Sheet</h2><p className="text-sm text-slate-500">{admin?(filters.center==='All'?'All centers':filters.center):center} · {filtered.length} review{filtered.length===1?'':'s'}</p></div><button onClick={()=>setViewMode('cards')} className="focusable rounded-xl border bg-white px-4 py-2 text-sm">Card View</button></div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-white/70 p-4"><div><h2 className="font-bold">Daily Findings Sheet</h2><p className="text-sm text-slate-500">{adminView?(filters.center==='All'?'All centers':filters.center):center} · {filtered.length} review{filtered.length===1?'':'s'}</p></div><button onClick={()=>setViewMode('cards')} className="focusable rounded-xl border bg-white px-4 py-2 text-sm">Card View</button></div>
           <div className="overflow-x-auto">
             <table className="min-w-[2800px] border-collapse text-xs">
               <thead className="sticky top-0 bg-slate-100 text-left">
@@ -415,7 +441,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
             <div className="mt-3"><div className="text-xs font-bold uppercase tracking-wide text-slate-500">Quick Coaching</div><p className="mt-1 line-clamp-3 text-sm leading-5 text-slate-700">{r.quickCoaching||'No coaching note.'}</p></div>
             <div className="mt-3 text-xs font-semibold text-sky-700">Open full review →</div>
           </button>
-          <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">{r.coached?<><button onClick={()=>setModal(r)} className="focusable flex-1 rounded-xl border bg-white px-3 py-2 text-sm font-semibold">Edit Coaching</button>{admin&&<button onClick={()=>reopen(r)} disabled={reopeningCallId===r.callId} className="focusable rounded-xl border border-red-200 bg-white px-3 py-2 text-sm text-red-700 disabled:opacity-50">{reopeningCallId===r.callId?<TinyLoader label="Reopening..." />:'Reopen'}</button>}</>:<button onClick={()=>setModal(r)} className="focusable flex-1 rounded-xl bg-sky-700 px-3 py-2 text-sm font-bold text-white">Mark as Coached</button>}{!admin&&!r.tlDisputed&&<button onClick={()=>setDisputeModal(r)} className="focusable rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-sm font-bold text-orange-800">Dispute QA Review</button>}{!admin&&r.tlDisputed&&<span className="w-full rounded-xl bg-orange-50 px-3 py-2 text-center text-sm font-bold text-orange-800">🟠 Dispute sent to QA Admin</span>}</div>
+          <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">{r.coached?<><button onClick={()=>setModal(r)} className="focusable flex-1 rounded-xl border bg-white px-3 py-2 text-sm font-semibold">Edit Coaching</button>{adminView&&<button onClick={()=>reopen(r)} disabled={reopeningCallId===r.callId} className="focusable rounded-xl border border-red-200 bg-white px-3 py-2 text-sm text-red-700 disabled:opacity-50">{reopeningCallId===r.callId?<TinyLoader label="Reopening..." />:'Reopen'}</button>}</>:<button onClick={()=>setModal(r)} className="focusable flex-1 rounded-xl bg-sky-700 px-3 py-2 text-sm font-bold text-white">Mark as Coached</button>}{center&&!r.tlDisputed&&<button onClick={()=>admin?setFlash('Admin Preview only — TL disputes must be submitted from the center login.'):setDisputeModal(r)} className="focusable rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-sm font-bold text-orange-800">Dispute QA Review</button>}{center&&r.tlDisputed&&<span className="w-full rounded-xl bg-orange-50 px-3 py-2 text-center text-sm font-bold text-orange-800">🟠 Dispute sent to QA Admin</span>}</div>
         </article>)}</div>}</div>}
       </div>
     </main>
