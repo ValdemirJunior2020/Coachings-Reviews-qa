@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useMemo,useState} from 'react';
-import type {Center} from '@/lib/types';
+import type {Center,Review} from '@/lib/types';
 import TinyLoader from '@/components/TinyLoader';
 
 type AgentRank={
@@ -21,14 +21,44 @@ export default function AgentRankingPage({center,admin,userName}:{center:Center;
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
 
+  function buildRanking(reviews:Review[]){
+    const buckets=new Map<string,{name:string;sum:number;count:number;pass:number;fail:number}>();
+    for(const review of reviews){
+      if(review.center!==center||review.finalScore===null||!Number.isFinite(review.finalScore))continue;
+      const name=String(review.agent||'').trim();
+      if(!name)continue;
+      const key=name.toLowerCase();
+      const bucket=buckets.get(key)||{name,sum:0,count:0,pass:0,fail:0};
+      bucket.sum+=review.finalScore;
+      bucket.count++;
+      const outcome=String(review.scorePassFail||'').trim().toUpperCase();
+      if(outcome==='PASS'||(!outcome&&review.finalScore>=90))bucket.pass++;
+      else if(outcome==='FAIL'||(!outcome&&review.finalScore<90))bucket.fail++;
+      buckets.set(key,bucket);
+    }
+    return [...buckets.values()]
+      .map(b=>({
+        name:b.name,
+        center,
+        avg:Math.round((b.sum/b.count)*10)/10,
+        count:b.count,
+        pass:b.pass,
+        fail:b.fail,
+        passRate:Math.round((b.count?b.pass/b.count*100:0)*10)/10,
+        rank:0,
+      }))
+      .sort((a,b)=>b.avg-a.avg||b.count-a.count||a.name.localeCompare(b.name))
+      .map((r,i)=>({...r,rank:i+1}));
+  }
+
   async function load(){
     setLoading(true);setError('');
     try{
-      const res=await fetch('/api/leaderboard',{cache:'no-store'});
+      const res=await fetch(`/api/reviews?center=${encodeURIComponent(center.toLowerCase())}`,{cache:'no-store'});
       const d=await res.json();
       if(!res.ok)throw new Error(d.error||'Unable to load agent ranking.');
-      setRows(d.agentRanks||[]);
-      setKpi(Number(d.kpi)||90);
+      setRows(buildRanking(d.reviews||[]));
+      setKpi(90);
     }catch(e){
       setError(e instanceof Error?e.message:'Unable to load agent ranking.');
     }finally{
@@ -38,19 +68,19 @@ export default function AgentRankingPage({center,admin,userName}:{center:Center;
 
   useEffect(()=>{
     let active=true;
-    fetch('/api/leaderboard',{cache:'no-store'})
+    fetch(`/api/reviews?center=${encodeURIComponent(center.toLowerCase())}`,{cache:'no-store'})
       .then(async res=>({res,data:await res.json()}))
       .then(({res,data})=>{
         if(!res.ok)throw new Error(data.error||'Unable to load agent ranking.');
         if(active){
-          setRows(data.agentRanks||[]);
-          setKpi(Number(data.kpi)||90);
+          setRows(buildRanking(data.reviews||[]));
+          setKpi(90);
         }
       })
       .catch(e=>{if(active)setError(e instanceof Error?e.message:'Unable to load agent ranking.')})
       .finally(()=>{if(active)setLoading(false)});
     return()=>{active=false};
-  },[]);
+  },[center]);
 
   const ranked=useMemo(()=>rows
     .filter(r=>r.center===center)
