@@ -323,7 +323,7 @@ export default function Dashboard({admin,center,userName}:{admin:boolean;center?
         {error&&<div role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-red-700">{error}</div>}
         {!loading&&!error&&<div className={`mt-5 rounded-2xl p-4 font-semibold ${overdue?'bg-red-50 text-red-800':pending?'bg-amber-50 text-amber-800':'bg-green-50 text-green-800'}`}>{overdue?`🔴 Overdue Coaching — ${overdue} review${overdue===1?'':'s'} pending for more than 2 business days.`:pending?`⚠ Coaching Reminder — ${pending} QA review${pending===1?' is':'s are'} still waiting for coaching confirmation.`:'✅ All Coaching Completed — There are no pending coaching reviews in this view.'}</div>}
 
-        <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-6"><Stat label="Reviews" value={total}/><Stat label="Pending" value={pending}/><Stat label="Completed" value={completed}/><Stat label="Overdue" value={overdue}/><Stat label="🟠 TL Disputed" value={disputed}/><Stat label="Completion" value={`${pct}%`}/></div>
+        <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-6"><Stat label="Total Reviews" value={total}/><Stat label="Pending" value={pending}/><Stat label="Completed" value={completed}/><Stat label="Overdue" value={overdue}/><Stat label="🟠 TL Disputed" value={disputed}/><Stat label="Completion" value={`${pct}%`}/></div>
 
         {adminView&&<div className="glass mt-5 rounded-2xl p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
