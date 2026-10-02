@@ -4,7 +4,7 @@ import { getLeaderboardRows } from '@/lib/sheetsDb';
 import type { Center } from '@/lib/types';
 
 const centers:Center[]=['Buwelo','Concentrix','WNS','Telus'];
-type ScoreBucket={sum:number;count:number};
+type ScoreBucket={sum:number;count:number;pass:number;fail:number};
 type CenterCoachingBucket={total:number;coached:number;onTime:number;speedDays:number;speedCount:number};
 
 function ranked<T extends {avg:number;name:string}>(rows:T[]){
@@ -54,7 +54,20 @@ export async function GET(){
     const center=d.center as Center;
     if(!centers.includes(center))continue;
 
+    // Agent QA ranking uses every scored QA currently available in the Scores data.
+    const score=typeof d.finalScore==='number'?d.finalScore:null;
+    const agent=String(d.agent||'').trim();
+    if(score!==null&&Number.isFinite(score)&&agent){
+      const key=`${center}::${agent.toLowerCase()}`;
+      const ab=agentBuckets.get(key)||{sum:0,count:0,pass:0,fail:0,name:agent,center};
+      ab.sum+=score;ab.count++;
+      const outcome=String(d.scorePassFail||'').trim().toUpperCase();
+      if(outcome==='PASS'||(!outcome&&score>=90))ab.pass++;
+      else if(outcome==='FAIL'||(!outcome&&score<90))ab.fail++;
+      agentBuckets.set(key,ab);
+    }
 
+    // Center coaching activity remains a rolling 30-day metric.
     const qaDate=parseDate(d.qaDate);
     if(!qaDate||qaDate<cutoff||qaDate>now)continue;
 
@@ -63,23 +76,13 @@ export async function GET(){
 
     if(Boolean(d.coached)){
       cb.coached++;
-      const qaDate=parseDate(d.qaDate);
       const coachedDate=parseDate(d.dateCoached);
-      if(qaDate&&coachedDate){
+      if(coachedDate){
         const speed=businessDaysBetween(qaDate,coachedDate);
         cb.speedDays+=speed;
         cb.speedCount++;
         if(speed<=2)cb.onTime++;
       }
-    }
-
-    const score=typeof d.finalScore==='number'?d.finalScore:null;
-    const agent=String(d.agent||'').trim();
-    if(score!==null&&Number.isFinite(score)&&agent){
-      const key=`${center}::${agent.toLowerCase()}`;
-      const ab=agentBuckets.get(key)||{sum:0,count:0,name:agent,center};
-      ab.sum+=score;ab.count++;
-      agentBuckets.set(key,ab);
     }
   }
 
@@ -140,9 +143,9 @@ export async function GET(){
 
   const visibleAgents=[...agentBuckets.values()]
     .filter(a=>session.role==='admin'||a.center===session.center)
-    .map(a=>({name:a.name,center:a.center,avg:a.sum/a.count,count:a.count}));
+    .map(a=>({name:a.name,center:a.center,avg:a.sum/a.count,count:a.count,pass:a.pass,fail:a.fail,passRate:a.count?a.pass/a.count*100:0}));
 
-  const agentRanks=ranked(visibleAgents).map(r=>({...r,avg:Math.round(r.avg*10)/10}));
+  const agentRanks=ranked(visibleAgents).map(r=>({...r,avg:Math.round(r.avg*10)/10,passRate:Math.round(r.passRate*10)/10}));
 
   return NextResponse.json({
     kpi:90,
