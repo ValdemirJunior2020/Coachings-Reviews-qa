@@ -17,10 +17,10 @@ function config(){
   return {url,token:process.env.DATABASE_TOKEN?.trim()||''};
 }
 
-export async function databaseRequest<T>(action:string,payload:Record<string,unknown>={}):Promise<T>{
+export async function databaseRequest<T>(action:string,payload:Record<string,unknown>={},timeoutMs=22000):Promise<T>{
   const {url,token}=config();
   const controller=new AbortController();
-  const timer=globalThis.setTimeout(()=>controller.abort(),22000);
+  const timer=globalThis.setTimeout(()=>controller.abort(),timeoutMs);
   let res:Response;
   try{
     res=await fetch(url,{
@@ -64,6 +64,10 @@ export async function getSheetReviews(center?:Center){
       const reviews=data.reviews||[];
       reviewCache.set(key,{at:Date.now(),reviews});
       return reviews;
+    })
+    .catch(error=>{
+      if(cached&&Date.now()-cached.at<15*60*1000)return cached.reviews;
+      throw error;
     })
     .finally(()=>reviewInflight.delete(key));
 
@@ -143,11 +147,11 @@ export async function replaceScores(rows:unknown[][]){
 
 
 export async function presencePing(payload:Record<string,unknown>){
-  return databaseRequest<{ok:boolean}>('presencePing',payload);
+  return databaseRequest<{ok:boolean}>('presencePing',payload,7000);
 }
 export async function presenceList(){
-  return databaseRequest<{users:Array<Record<string,unknown>>}>('presenceList');
+  return databaseRequest<{users:Array<Record<string,unknown>>}>('presenceList',{},7000);
 }
 export async function presenceDelete(email:string){
-  return databaseRequest<{ok:boolean}>('presenceDelete',{email});
+  return databaseRequest<{ok:boolean}>('presenceDelete',{email},7000);
 }
